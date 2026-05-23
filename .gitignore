@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+src/node_modules/
+
+# Build output
+dist/
+build/
+src/dist/
+src/build/
+
+# BMAD install — users install this themselves via `npx bmad-method install`
+_bmad/
+
+# Ralph loop run artifacts
+scripts/logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Claude Code session state
+.claude/local/
