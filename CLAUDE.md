@@ -24,12 +24,17 @@ A lean stack is a feature here. The demo is about the loop, not the app.
 
 ## Agent behavior inside the loop
 
-**Scrum Master (`bmad-agent-sm`)**
+> **BMAD version note.** This repo installs the latest BMAD (v6.7+), which has
+> no `bmad-agent-sm`. The Ralph loop maps its roles to v6.7 skills: SM =
+> `bmad-create-story`, Dev = `bmad-dev-story`, Review = `bmad-code-review`.
+> The behavioral rules below still apply regardless of skill name.
+
+**Scrum Master (`bmad-create-story`)**
 - Produce exactly one detailed story spec per invocation. Never expand multiple stories in one run.
 - Acceptance criteria must be observable from outside the code: "renders X", "responds to Y click", "calls endpoint Z" — not "uses pattern P" or "follows convention Q".
 - Reference the PRD and parent epic, but inline the relevant section into the story spec so the Dev agent does not need to re-read those files.
 
-**Developer (`bmad-agent-dev`)**
+**Developer (`bmad-dev-story`)**
 - Implement only what the story spec asks for. No refactors of unrelated code, no "while I'm here" cleanups.
 - Stick to the stack rules above. If a story seems to require something not allowed, flag it as a question in the story file rather than installing it.
 - Tests live beside source files (`Component.tsx` / `Component.test.tsx`).

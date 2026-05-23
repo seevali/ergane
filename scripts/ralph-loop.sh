@@ -2,25 +2,30 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════
-# Ralph Loop — Affiant (Cost-Optimized)
+# Ralph Loop — Exchange Rates Dashboard demo (Cost-Optimized)
 #
 # Orchestrates SM -> Dev -> Review -> Fix cycles per story.
 # Each agent invocation is a fresh Claude Code session (the core
 # Ralph insight: clean context per step).
 #
-# Adapted from ralph-gantry-v2.sh for the Affiant .NET monorepo.
-# Same loop semantics; the differences are:
-#   - PRD and architecture documents are passed via optional flags
-#     (--prd, --arch) instead of being auto-derived from the epic
-#     directory, since Affiant's PRDs and architecture docs live
-#     in different folders than the planning artifacts.
-#   - Cached system prompts encode .NET 10 / C# 12 conventions,
-#     the Affiant Abstractions <- Core <- Adapters layering DAG,
-#     and the Seven Normative Rules from packages/docs/.
-#   - Review standards are .NET-specific (nullable, async hygiene,
-#     records vs classes, layering, domain purity).
+# Adapted from ralph-affiant-v2.sh for this self-contained React + Vite
+# + TypeScript demo repo. The loop semantics, multi-model routing, retry
+# logic, and budget caps are unchanged from the Affiant version; only the
+# stack-specific bits were swapped:
+#   - Defaults target this repo: --project-dir src, --prd docs/prd.md,
+#     --epic docs/epics/exchange-rates-dashboard.md, and an npm checkpoint.
+#     A PRD is passed via --prd; there is no separate architecture doc
+#     (--arch stays optional and unset).
+#   - Cached system prompts encode React 19 / Vite / TypeScript-strict
+#     conventions (function components + hooks, native fetch, localStorage,
+#     no class components, lean dependency stack) instead of .NET/C#.
+#   - Review standards are React/TS-specific (hooks rules, strict types,
+#     Vitest + RTL, stack-rule adherence) instead of .NET layering.
+#   - BMAD agent personas load from .claude/skills (BMAD v6.7+): the SM
+#     step is bmad-create-story, Dev is bmad-dev-story, Review is
+#     bmad-code-review (there is no bmad-agent-sm in v6.7+).
 #
-# Cost optimizations preserved from the Gantry version:
+# Cost optimizations preserved from the Affiant version:
 #   1. Multi-model routing: SM=haiku, Dev=sonnet, Review=opus
 #   2. Per-agent --max-turns caps to prevent runaway loops
 #   3. Optional --max-budget-usd hard cap per invocation
@@ -49,11 +54,13 @@ MAX_ITERATIONS=50
 MAX_REVIEW_RETRIES=3
 MAX_UPSTREAM_DEPTH=1
 TAG=""
-EPIC_FILE=""
-STORIES_ARG=""
-CHECKPOINT_CMD=""
-PROJECT_DIR_ARG=""
-PRD_FILE=""
+# Defaults target this demo repo so the documented command — and a bare
+# `./scripts/ralph-loop.sh` — work out of the box. Flags still override.
+EPIC_FILE="docs/epics/exchange-rates-dashboard.md"
+STORIES_ARG="all"
+CHECKPOINT_CMD="cd src && npm run build && npm test --if-present"
+PROJECT_DIR_ARG="src"
+PRD_FILE="docs/prd.md"
 ARCH_FILE=""
 
 # Cost-optimization defaults
@@ -73,19 +80,26 @@ BUDGET_PER_STORY_USD=""        # Hard dollar cap per story; abort if cumulative 
 # ──── Argument parsing ────
 usage() {
   cat <<'EOF'
-Usage: ralph-affiant-v2.sh --project-dir DIR --epic FILE --stories LIST --checkpoint CMD [options]
+Usage: ralph-loop.sh [--project-dir DIR] [--epic FILE] [--stories LIST] [--checkpoint CMD] [options]
 
-Required:
-  --project-dir DIR        Relative path to the component the agents will work inside
-                           (e.g., apps/Meridian, packages, apps/Meridian/src/Meridian.Api)
-  --epic FILE              Path to the epics markdown file (e.g., docs/planning-artifacts/epics.md)
-  --stories LIST           Comma-separated story IDs in execution order (e.g., 1.1,1.2,1.3)
-  --checkpoint CMD         Shell command to verify project health
-                           (e.g., 'dotnet build apps/Meridian/Meridian.sln -c Release && dotnet test apps/Meridian/Meridian.sln -c Release')
+All four "required" flags below have demo defaults baked in, so a bare
+`./scripts/ralph-loop.sh` runs the full Exchange Rates Dashboard build.
+Pass a flag only to override its default.
+
+Core flags (defaults shown):
+  --project-dir DIR        Relative path to the app the agents work inside
+                           (default: src)
+  --epic FILE              Path to the epics markdown file
+                           (default: docs/epics/exchange-rates-dashboard.md)
+  --stories LIST           "all" (every story in the epic, in file order) or a
+                           comma-separated subset in execution order, e.g. 1.1,1.2,1.3
+                           (default: all)
+  --checkpoint CMD         Shell command to verify project health, run from repo root
+                           (default: 'cd src && npm run build && npm test --if-present')
 
 Optional document references (passed to SM agent for context):
-  --prd FILE               Path to the PRD markdown (e.g., docs/architecture/phase-1-prd-production-ready-meridian.md)
-  --arch FILE              Path to the architecture doc (e.g., docs/architecture/affiant-repo-architecture.md)
+  --prd FILE               Path to the PRD markdown (default: docs/prd.md)
+  --arch FILE              Path to an architecture doc (default: unset — this demo has none)
 
 Loop options:
   --max-iterations N       Max total agent invocations (default: 50)
@@ -105,13 +119,16 @@ Cost options:
   --escalation-model MODEL     Model to use on dev/fix retry (default: opus)
   --escalation-turns-multiplier N  Turn cap multiplier on escalated attempt (default: 2)
 
-Example (Meridian Phase 1, Epic 2):
-  ralph-affiant-v2.sh --project-dir apps/Meridian \
-     --epic docs/planning-artifacts/epics.md \
-     --prd docs/architecture/phase-1-prd-production-ready-meridian.md \
-     --arch docs/architecture/affiant-repo-architecture.md \
-     --stories 2.1,2.2,2.3,2.4 \
-     --checkpoint 'dotnet build apps/Meridian/Meridian.sln -c Release && dotnet test apps/Meridian/Meridian.sln -c Release'
+Example (run the whole Exchange Rates Dashboard build — these are the defaults):
+  ./scripts/ralph-loop.sh \
+     --project-dir src \
+     --prd docs/prd.md \
+     --epic docs/epics/exchange-rates-dashboard.md \
+     --stories all \
+     --checkpoint 'cd src && npm run build && npm test --if-present'
+
+Example (just the first two stories):
+  ./scripts/ralph-loop.sh --stories 1.1,1.2
 EOF
   exit 1
 }
@@ -158,22 +175,28 @@ command -v git >/dev/null 2>&1 || {
 
 # ──── Path Resolution ────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AFFIANT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 if [[ "$PROJECT_DIR_ARG" == /* ]]; then
   PROJECT_DIR="$PROJECT_DIR_ARG"
 else
-  PROJECT_DIR="$AFFIANT_ROOT/$PROJECT_DIR_ARG"
+  PROJECT_DIR="$REPO_ROOT/$PROJECT_DIR_ARG"
 fi
 [[ ! -d "$PROJECT_DIR" ]] && { echo -e "${RED}Error: Project directory not found: $PROJECT_DIR${NC}"; exit 1; }
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 
 COMPONENT_NAME="$(basename "$PROJECT_DIR_ARG" | tr '[:upper:]' '[:lower:]')"
-COMPONENT_DISPLAY_NAME="$(basename "$PROJECT_DIR_ARG")"
+# Friendly label for banners/progress headers. `src` is this demo's app dir,
+# so show the product name rather than the bare folder name.
+if [[ "$COMPONENT_NAME" == "src" ]]; then
+  COMPONENT_DISPLAY_NAME="Exchange Rates Dashboard"
+else
+  COMPONENT_DISPLAY_NAME="$(basename "$PROJECT_DIR_ARG")"
+fi
 
 if [[ ! -f "$EPIC_FILE" ]]; then
-  if [[ -f "$AFFIANT_ROOT/$EPIC_FILE" ]]; then
-    EPIC_FILE="$AFFIANT_ROOT/$EPIC_FILE"
+  if [[ -f "$REPO_ROOT/$EPIC_FILE" ]]; then
+    EPIC_FILE="$REPO_ROOT/$EPIC_FILE"
   else
     echo -e "${RED}Error: Epic file not found: $EPIC_FILE${NC}"; exit 1
   fi
@@ -187,8 +210,8 @@ resolve_optional_doc() {
     echo "$path"
   elif [[ -f "$path" ]]; then
     echo "$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
-  elif [[ -f "$AFFIANT_ROOT/$path" ]]; then
-    echo "$AFFIANT_ROOT/$path"
+  elif [[ -f "$REPO_ROOT/$path" ]]; then
+    echo "$REPO_ROOT/$path"
   else
     echo "$path"
   fi
@@ -200,9 +223,11 @@ ARCH_FILE="$(resolve_optional_doc "$ARCH_FILE")"
 [[ -n "$PRD_FILE"  && ! -f "$PRD_FILE"  ]] && echo -e "${YELLOW}Warning: PRD file not found at $PRD_FILE${NC}"
 [[ -n "$ARCH_FILE" && ! -f "$ARCH_FILE" ]] && echo -e "${YELLOW}Warning: Architecture doc not found at $ARCH_FILE${NC}"
 
-STORIES_DIR="$AFFIANT_ROOT/stories/$COMPONENT_NAME"
+# Story specs, per-story progress, and review notes all live in docs/stories/
+# (BMAD's implementation_artifacts location for this repo).
+STORIES_DIR="$REPO_ROOT/docs/stories"
 LOG_DIR="$SCRIPT_DIR/logs"
-LOG_FILE="$LOG_DIR/ralph-affiant-$(date +%Y-%m-%d-%H-%M).log"
+LOG_FILE="$LOG_DIR/ralph-loop-$(date +%Y-%m-%d-%H-%M).log"
 MASTER_PROGRESS_FILE="$STORIES_DIR/ralph-sprint-progress.md"
 START_TIME="$(date +"%Y-%m-%d %H:%M")"
 LOOP_START_EPOCH="$(date +%s)"
@@ -210,12 +235,25 @@ LOOP_START_EPOCH="$(date +%s)"
 mkdir -p "$STORIES_DIR"
 mkdir -p "$LOG_DIR"
 
-BMAD_ROOT="$AFFIANT_ROOT/_bmad/bmm/4-implementation"
+# BMAD v6.7+ registers agent skills under .claude/skills/ (created by
+# `npx bmad-method install`). The loop reads each agent's SKILL.md from here
+# to seed the cached system prompts; if absent it falls back to inline personas.
+BMAD_ROOT="$REPO_ROOT/.claude/skills"
 
 cd "$PROJECT_DIR"
 
-if [[ ! -f "CLAUDE.md" ]]; then
-  echo -e "${YELLOW}Warning: CLAUDE.md not found in $PROJECT_DIR — agents will rely on PRD and architecture docs${NC}"
+if [[ ! -f "CLAUDE.md" && ! -f "$REPO_ROOT/CLAUDE.md" ]]; then
+  echo -e "${YELLOW}Warning: no CLAUDE.md found — agents will rely on the PRD and epic for conventions${NC}"
+fi
+
+# Expand `--stories all` into every story ID in the epic file, in file order.
+# Story headers look like `### Story 1.1: ...`.
+if [[ "$STORIES_ARG" == "all" ]]; then
+  STORIES_ARG="$(grep -oE '^### Story [0-9]+\.[0-9]+' "$EPIC_FILE" \
+    | grep -oE '[0-9]+\.[0-9]+' | paste -sd, -)"
+  [[ -z "$STORIES_ARG" ]] && {
+    echo -e "${RED}Error: --stories all found no '### Story X.Y' headers in $EPIC_FILE${NC}"; exit 1; }
+  echo -e "${CYAN}--stories all -> $STORIES_ARG${NC}"
 fi
 
 IFS=',' read -ra STORY_LIST <<< "$STORIES_ARG"
@@ -275,8 +313,13 @@ log_plain()   { local t="[$(timestamp)]"; echo "$t $1" >> "$LOG_FILE"; echo "$t 
 log_dim()     { local t="[$(timestamp)]"; echo "$t $1" >> "$LOG_FILE"; echo -e "${DIM}${t} $1${NC}"; }
 
 # ──── Load BMAD agent definitions ────
-AGENT_SM_FILE="$BMAD_ROOT/bmad-agent-sm/SKILL.md"
-AGENT_DEV_FILE="$BMAD_ROOT/bmad-agent-dev/SKILL.md"
+# BMAD v6.7+ skill mapping for the SM -> Dev -> Review cycle:
+#   SM     = bmad-create-story (turns the epic into a context-rich story spec)
+#   Dev    = bmad-dev-story    (implements the story spec)
+#   Review = bmad-code-review  (adversarial review + triage)
+# There is no bmad-agent-sm in v6.7+; bmad-create-story is its successor.
+AGENT_SM_FILE="$BMAD_ROOT/bmad-create-story/SKILL.md"
+AGENT_DEV_FILE="$BMAD_ROOT/bmad-dev-story/SKILL.md"
 AGENT_REVIEW_DIR="$BMAD_ROOT/bmad-code-review"
 
 AGENT_SM_PERSONA=""
@@ -297,14 +340,14 @@ else
   log_warn "Dev agent SKILL.md not found at $AGENT_DEV_FILE — using inline fallback"
 fi
 
-if [[ -f "$AGENT_REVIEW_DIR/workflow.md" ]]; then
-  AGENT_REVIEW_PERSONA=$(cat "$AGENT_REVIEW_DIR/workflow.md")
+if [[ -f "$AGENT_REVIEW_DIR/SKILL.md" ]]; then
+  AGENT_REVIEW_PERSONA=$(cat "$AGENT_REVIEW_DIR/SKILL.md")
   for step_file in "$AGENT_REVIEW_DIR/steps/"*.md; do
     [[ -f "$step_file" ]] && AGENT_REVIEW_PERSONA+=$'\n\n'"$(cat "$step_file")"
   done
   log_info "Loaded Review agent workflow from $AGENT_REVIEW_DIR"
 else
-  log_warn "Review agent workflow.md not found at $AGENT_REVIEW_DIR — using inline fallback"
+  log_warn "Review agent SKILL.md not found at $AGENT_REVIEW_DIR — using inline fallback"
 fi
 
 # ════════════════════════════════════════════════════════════════
@@ -335,49 +378,28 @@ You are running non-interactively in an automated pipeline. Follow these rules:
 - If you need information not provided, make a reasonable assumption and document it in your output.
 - Do not ask clarifying questions — commit to a direction and note your assumption.
 
-## Project Conventions (.NET / C#)
+## Project Conventions (React / Vite / TypeScript)
 
-- Language: C# 12 on .NET 10 (TargetFramework net10.0). Do not introduce multi-targeting.
-- Nullable reference types enabled globally. Do not disable per file. No \`!\` null-forgiving without justification.
-- TreatWarningsAsErrors=true. A warning is a build break — fix the cause, do not suppress.
-- Implicit usings enabled. File-scoped namespaces only (\`namespace Foo.Bar;\`), never block-scoped.
-- Records for DTOs, models, and immutable value types. Classes only for services with behavior and mutable state. \`readonly record struct\` for small value types that benefit from stack allocation.
-- Primary constructors on services where dependencies are captured by DI.
-- Async I/O throughout. No \`Thread.Sleep\`, no \`.Result\` / \`.Wait()\` on Tasks. Public async methods that touch I/O take a \`CancellationToken\`.
-- Logging via \`Microsoft.Extensions.Logging.ILogger\`. No \`Console.WriteLine\`, \`Debug.WriteLine\`, or \`Trace\` in production code paths.
-- Tests: xUnit, one test project per src project under \`tests/\` (or \`packages/tests/\` for framework). Read project-area-specific CLAUDE.md files for additional rules.
+- Stack: React 19 + Vite + TypeScript (\`strict\` on) in \`src/\`. Do not introduce Next.js, SSR, or any other framework.
+- Function components and hooks only. No class components. Reach for \`useReducer\` only where it genuinely simplifies state.
+- TypeScript strict mode: no \`any\` to silence the compiler, no \`@ts-ignore\`/\`@ts-expect-error\` to hide a real type error, no non-null \`!\` to paper over a possibly-undefined value. Fix the type, do not suppress it. A \`tsc\` error is a build break.
+- Lean stack — this is a deliberate constraint. Do NOT add a dependency to \`src/package.json\` (UI kit, charting lib, state lib, axios/swr/react-query, etc.) unless the story spec explicitly requires it. Use what's there: native \`fetch\` for HTTP, React hooks for state, plain CSS or CSS Modules for styling, inline SVG for charts.
+- Data fetching with native \`fetch\`. Handle loading and error states explicitly; do not swallow rejected promises.
+- Persistence is \`localStorage\` only. No IndexedDB, no backend, no database. Guard \`JSON.parse\` of stored values against malformed data.
+- Tests: Vitest + React Testing Library, colocated as \`Component.test.tsx\` beside \`Component.tsx\`. Prefer behavior-level assertions (what the user sees / what endpoint is called) over implementation detail.
+- Keep imports inside \`src/\`. Do not reach outside the app directory.
 
-## Affiant Layering Invariant (only applies to changes inside packages/)
+## Scope Discipline
 
-The framework dependency graph is a strict DAG:
-
-  Affiant.Abstractions   (zero Affiant deps; primitive types + interfaces)
-        ↑
-  Affiant.Core           (concrete services; references Abstractions only)
-        ↑
-  Affiant.SemanticKernel, Affiant.Docket, Affiant.EntityFramework,
-  Affiant.Policies, Affiant.Transport.SignalR  (adapter packages)
-
-- Adapter packages never reference each other.
-- Core never references adapters; it consumes them via DI through interfaces.
-- packages/ never references apps/. Anything domain-specific (WorkOrder, Aircraft, Customer, FleetStatus, LeaveRequest, Employee, Meridian, HRPortal, etc.) must not appear under packages/.
-- If you find yourself wanting to add a ProjectReference that inverts this DAG, stop and document the coupling in your output instead of papering over it.
-
-## The Seven Normative Rules (apply to all framework code)
-
-1. One system prompt per agent, immutable after initialization.
-2. Dual-audience tool returns — readable by both the LLM (markdown + \`[entity:id]\` refs) and the UI (structured payload). Read tools return markdown; write tools return Affidavits.
-3. Write-intent tools never write directly. They emit \`WriteProposal\` envelopes; the actual write happens only after \`ReviewGate\` confirmation, via the host's \`IWriteExecutor\`.
-4. Filters over prompts for determinism. Context extraction, task inference, and review gating live in SK filters — never baked into prompt text.
-5. Graceful degradation on provider failure. Primary LLM outage falls back to secondary or a deterministic degraded mode. Never throw an unhandled exception from a chat completion call.
-6. \`data-guide\` contracts are UI-layer registrations. The LLM discovers guidable elements through \`IRouteRegistry\`, never via DOM inspection or generated CSS selectors.
-7. Every \`Affidavit\` field carries provenance, no exceptions. If unknown, tag it \`ProvenanceSource.Empty\`. Never omit.
+- Implement only what the current story spec asks for. No refactors of unrelated code, no \"while I'm here\" cleanups, no speculative abstractions.
+- If a story seems to require something the stack rules forbid (e.g. a new library), flag it as a question in your output rather than silently installing it.
+- Acceptance criteria are the contract. Make them demonstrable; do not gold-plate beyond them.
 
 ## Checkpoint Command
 
 The project checkpoint command is: ${CHECKPOINT_CMD}
 
-Run this to verify the project builds and tests pass."
+Run this from the repo root to verify the app builds and tests pass."
 
   # ── SM system prompt ──
   if [[ -n "$AGENT_SM_PERSONA" ]]; then
@@ -389,7 +411,7 @@ ${AGENT_SM_PERSONA}
 
 ${common}"
   else
-    SYSTEM_PROMPT_SM="You are the BMAD Scrum Master agent.
+    SYSTEM_PROMPT_SM="You are the BMAD Scrum Master (bmad-create-story). Produce exactly one detailed, implementation-ready story spec from the epic and PRD. Acceptance criteria must be observable from outside the code.
 
 ${common}"
   fi
@@ -404,7 +426,7 @@ ${AGENT_DEV_PERSONA}
 
 ${common}"
   else
-    SYSTEM_PROMPT_DEV="You are the BMAD Developer agent.
+    SYSTEM_PROMPT_DEV="You are the BMAD Developer (bmad-dev-story). Implement the story spec to satisfy its acceptance criteria, then make the checkpoint pass.
 
 ${common}"
   fi
@@ -431,20 +453,22 @@ ${common}
 
 ## Review Standards
 
-When reviewing code, check:
-1. Does the implementation match ALL acceptance criteria from the story?
-2. Does the code follow the project conventions and Affiant layering above?
-3. Does the project build successfully? Run the checkpoint command.
-4. Are there obvious bugs, missing error handling, or broken \`using\` directives?
-5. Does the implementation integrate correctly with code from previous stories?
-6. C#/.NET: nullable warnings honored, no \`!\` null-forgiving without justification, no \`#nullable disable\`, no \`#pragma warning disable\` for the build error itself.
-7. Layering: framework changes respect the Abstractions ← Core ← Adapters DAG. No adapter-to-adapter ProjectReference edges. No packages/ → apps/ edges.
-8. Domain purity: nothing under packages/ references Meridian/HR Portal/aviation/HR domain types (\`WorkOrder\`, \`Aircraft\`, \`Customer\`, \`FleetStatus\`, \`LeaveRequest\`, \`Employee\`, etc.).
-9. Seven Normative Rules: every framework change conforms — especially write tools never write directly, every Affidavit field carries provenance, the system prompt stays immutable.
-10. Logging: \`ILogger\` only. No \`Console.WriteLine\`, \`Debug.WriteLine\`, or \`Trace\` in production code paths.
-11. Async hygiene: no \`.Result\` / \`.Wait()\` / \`Thread.Sleep\` on Tasks. Public async methods that do I/O take a \`CancellationToken\` and pass it through. Library code uses \`ConfigureAwait(false)\` where appropriate.
-12. Records vs classes: records for DTOs and value types; classes only for services with behavior. Primary constructors on DI services.
-13. Testing: xUnit tests exist for new public types/services, all tests pass under \`dotnet test\`.
+PASS the review when the acceptance criteria are met AND the checkpoint
+(\`cd src && npm run build && npm test --if-present\`) succeeds — even if you
+would have written the code differently. Surface at most ONE blocking issue
+per review pass; let the Fix step land it before reviewing again.
+
+BLOCK only on:
+1. Acceptance criteria not met — any story AC is unsatisfied or not demonstrable.
+2. Build or test failure — \`tsc\`/Vite build errors, or failing Vitest tests. Run the checkpoint to confirm.
+3. Stack-rule violation — a class component; a new \`src/package.json\` dependency the story did not call for (UI kit, charting/state/HTTP lib); use of localStorage-forbidden persistence; a non-\`fetch\` HTTP path.
+4. Type-safety escape hatch hiding a real error — \`any\`, \`@ts-ignore\`/\`@ts-expect-error\`, or non-null \`!\` used to silence the compiler rather than fix the type.
+5. Import reaching outside \`src/\`.
+6. Real bug or missing error/loading handling — unhandled rejected fetch, blanked-out UI on error where the AC says otherwise, unguarded \`JSON.parse\` of localStorage.
+7. Security issue.
+
+DO NOT block on style: renames, comment density, test organization, or
+\"I'd structure this differently.\" Those are nits, not blockers.
 
 ## Cross-Story Root Cause Analysis
 
@@ -488,7 +512,7 @@ check_interrupted() {
 # ════════════════════════════════════════════════════════════════
 
 run_checkpoint() {
-  (cd "$AFFIANT_ROOT" && eval "$CHECKPOINT_CMD") 2>&1
+  (cd "$REPO_ROOT" && eval "$CHECKPOINT_CMD") 2>&1
 }
 
 # ════════════════════════════════════════════════════════════════
@@ -628,7 +652,7 @@ update_master_progress_file() {
   {
     echo "# Ralph Sprint Progress — ${COMPONENT_DISPLAY_NAME}"
     echo ""
-    echo "> Auto-generated by \`ralph-affiant-v2.sh\`. Do not edit manually."
+    echo "> Auto-generated by \`ralph-loop.sh\`. Do not edit manually."
     echo ">"
     echo "> Each epic run appends a new sprint section. Story statuses reflect the last run that touched each story."
     echo ""
@@ -996,7 +1020,7 @@ run_review_agent_with_failure_injection() {
   local pf chk_tail
   pf=$(mktemp)
 
-  # Cap captured output to keep the prompt bounded — dotnet test failures can
+  # Cap captured output to keep the prompt bounded — build/test failures can
   # be tens of thousands of lines, and the tail typically has the actionable signal.
   chk_tail=$(printf '%s\n' "$chk_output" | tail -n 200)
 
@@ -1272,15 +1296,15 @@ main() {
       if [[ $dev_rc -eq 3 && ! -f "${STORIES_DIR}/${story_id}-done.md" ]]; then
         log_warn "[$story_id] Dev hit max_turns — checking on-disk state before retrying"
         local diff_stat
-        diff_stat=$(cd "$AFFIANT_ROOT" && git status --porcelain 2>/dev/null | head -50)
+        diff_stat=$(cd "$REPO_ROOT" && git status --porcelain 2>/dev/null | head -50)
         if [[ -n "$diff_stat" ]]; then
           log_info "[$story_id] Working tree has changes — running checkpoint to verify..."
           local checkpoint_rc=0
-          ( cd "$AFFIANT_ROOT" && eval "$CHECKPOINT_CMD" ) > /dev/null 2>>"$LOG_FILE" || checkpoint_rc=$?
+          ( cd "$REPO_ROOT" && eval "$CHECKPOINT_CMD" ) > /dev/null 2>>"$LOG_FILE" || checkpoint_rc=$?
           if [[ $checkpoint_rc -eq 0 ]]; then
             log_success "[$story_id] Checkpoint passed despite max_turns — salvaging dev's on-disk output"
             local files_changed
-            files_changed=$(cd "$AFFIANT_ROOT" && git diff --stat HEAD 2>/dev/null; cd "$AFFIANT_ROOT" && git status --porcelain 2>/dev/null | grep '^??' | awk '{print "  untracked: "$2}')
+            files_changed=$(cd "$REPO_ROOT" && git diff --stat HEAD 2>/dev/null; cd "$REPO_ROOT" && git status --porcelain 2>/dev/null | grep '^??' | awk '{print "  untracked: "$2}')
             cat > "${STORIES_DIR}/${story_id}-done.md" << SALVAGE_DONE
 # Story ${story_id} — Implementation Summary (Salvaged from max_turns)
 
@@ -1649,38 +1673,27 @@ SALVAGE_DONE
     mark_story_complete "$story_id"
 
     local git_rc=0
-    # Narrow git add (2026-05-15 hardening): stage only story-scoped artifacts
-    # plus framework src/tests. Previously this was `git add -A`, which swept
-    # up unrelated tracked changes (sprint-progress files, logs, other
-    # stories' uncommitted source) into the feat(X.Y): commit — causing the
-    # 2026-05-15 wrong-label-commit incident where Story 15.4's source files
-    # were left uncommitted at end of Run 1 and got swept into a
-    # `feat(15.1):`-labeled commit on Run 2's phantom iteration.
-    # `cd "$AFFIANT_ROOT"` is critical: the script's cwd is "$PROJECT_DIR"
-    # (= packages/ per `--project-dir packages`) from the `cd "$PROJECT_DIR"`
-    # call at the top of main(). The pathspecs below are repo-root-relative
-    # (`packages/docs/`, `apps/`, `.github/workflows/`, `stories/packages/...`),
-    # so they don't resolve from inside packages/ — git add returns 1 and
-    # nothing is staged. This was the cause of Story 15.7's silent failure-to-
-    # commit on 2026-05-16 00:49 (Ralph logged "Nothing to commit" and exited
-    # cleanly with `1/1 stories done`, but the 4 deliverable files sat
-    # unstaged in the working tree because the narrow add ran from packages/).
-    # Wrap in a subshell that cd's to AFFIANT_ROOT first, matching the pattern
-    # used by run_checkpoint().
+    # Narrow git add: stage only this story's artifacts plus the app source,
+    # never `git add -A` (which would sweep unrelated tracked changes — logs,
+    # other stories' progress — into the feat(X.Y): commit).
+    #
+    # `cd "$REPO_ROOT"` is critical: the script's cwd is "$PROJECT_DIR" (= src/)
+    # from the `cd "$PROJECT_DIR"` near the top of the run. The pathspecs below
+    # are repo-root-relative (`src/`, `docs/stories/`), so they must resolve
+    # from the repo root, not from inside src/. node_modules/ and dist/ under
+    # src/ are gitignored, so `git add src/` won't stage build output.
     #
     # `|| true` is also critical: the script runs under `set -euo pipefail`.
-    # Without the trap, any non-zero git-add return (e.g., from a pathspec
-    # that doesn't yet exist on disk — common for stories that don't touch
-    # every listed directory) would terminate the script before reaching
-    # `git commit`. The `git diff --cached --quiet` check immediately below
-    # is the real signal we care about — not git-add's exit code.
-    ( cd "$AFFIANT_ROOT" && git add \
+    # A non-zero git-add return (e.g. a pathspec that doesn't exist yet for a
+    # story that doesn't touch it) would otherwise terminate the script before
+    # `git commit`. The `git diff --cached --quiet` check below is the real
+    # signal we care about — not git-add's exit code.
+    ( cd "$REPO_ROOT" && git add \
       "${STORIES_DIR}/${story_id}.md" \
       "${STORIES_DIR}/${story_id}-done.md" \
       "${STORIES_DIR}/${story_id}-review.md" \
-      packages/src/ packages/tests/ packages/docs/ \
-      apps/ \
-      .github/workflows/ \
+      src/ \
+      docs/stories/ \
       2>/dev/null ) || true
     # Nothing-to-commit guard — final defense against a no-op commit.
     if git diff --cached --quiet; then
