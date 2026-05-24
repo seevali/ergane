@@ -1754,28 +1754,44 @@ SALVAGE_DONE
     mark_story_complete "$story_id"
 
     local git_rc=0
-    # Narrow git add: stage only this story's artifacts plus the app source,
-    # never `git add -A` (which would sweep unrelated tracked changes — logs,
-    # other stories' progress — into the feat(X.Y): commit).
+    # Narrow git add: stage only this story's artifacts plus configured
+    # work-surface paths. The default list is correct for the Demo Track
+    # (work happens in src/, story specs land in docs/stories/). System
+    # Track runs need a wider scope (scripts/, system/, root docs) because
+    # the loop itself is the work surface — those paths are added via the
+    # EXTRA_STAGE_PATHS env var, which the System Track wrapper exports.
     #
-    # `cd "$REPO_ROOT"` is critical: the script's cwd is "$PROJECT_DIR" (= src/)
-    # from the `cd "$PROJECT_DIR"` near the top of the run. The pathspecs below
-    # are repo-root-relative (`src/`, `docs/stories/`), so they must resolve
-    # from the repo root, not from inside src/. node_modules/ and dist/ under
-    # src/ are gitignored, so `git add src/` won't stage build output.
+    # Never `git add -A` (which would sweep unrelated tracked changes —
+    # logs, other stories' progress, anything you happened to be editing
+    # — into the feat(X.Y): commit).
     #
-    # `|| true` is also critical: the script runs under `set -euo pipefail`.
-    # A non-zero git-add return (e.g. a pathspec that doesn't exist yet for a
-    # story that doesn't touch it) would otherwise terminate the script before
-    # `git commit`. The `git diff --cached --quiet` check below is the real
-    # signal we care about — not git-add's exit code.
-    ( cd "$REPO_ROOT" && git add \
-      "${STORIES_DIR}/${story_id}.md" \
-      "${STORIES_DIR}/${story_id}-done.md" \
-      "${STORIES_DIR}/${story_id}-review.md" \
-      src/ \
-      docs/stories/ \
-      2>/dev/null ) || true
+    # `cd "$REPO_ROOT"` is critical: the script's cwd is "$PROJECT_DIR"
+    # (= src/) from the `cd "$PROJECT_DIR"` near the top of the run. The
+    # pathspecs below are repo-root-relative, so they must resolve from
+    # the repo root. node_modules/ and dist/ under src/ are gitignored,
+    # so `git add src/` won't stage build output.
+    #
+    # `|| true` on git add is also critical: the script runs under
+    # `set -euo pipefail`. A non-zero git-add return (e.g. a pathspec
+    # that doesn't exist yet for a story that doesn't touch it) would
+    # otherwise terminate the script before `git commit`. The
+    # `git diff --cached --quiet` check below is the real signal we
+    # care about — not git-add's exit code.
+    local -a stage_paths=(
+      "${STORIES_DIR}/${story_id}.md"
+      "${STORIES_DIR}/${story_id}-done.md"
+      "${STORIES_DIR}/${story_id}-review.md"
+      src/
+      docs/stories/
+    )
+    if [[ -n "${EXTRA_STAGE_PATHS:-}" ]]; then
+      # Intentional word splitting on EXTRA_STAGE_PATHS so callers can pass
+      # space-separated paths via env var: EXTRA_STAGE_PATHS="scripts/ system/ README.md"
+      # shellcheck disable=SC2206
+      local -a extra=(${EXTRA_STAGE_PATHS})
+      stage_paths+=("${extra[@]}")
+    fi
+    ( cd "$REPO_ROOT" && git add "${stage_paths[@]}" 2>/dev/null ) || true
     # Nothing-to-commit guard — final defense against a no-op commit.
     if git diff --cached --quiet; then
       log_warn "[$story_id] Nothing to commit (no story-scoped changes); skipping commit"

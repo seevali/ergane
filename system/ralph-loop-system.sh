@@ -140,6 +140,14 @@ echo
 # fix(system): unblock first chapter run commit.
 export STORIES_DIR="$REPO_ROOT/$STORIES_REL"
 
+# Tell the loop's auto-commit step which extra paths to stage for System
+# Track stories. The loop's default staging list covers Demo Track work
+# (src/, docs/stories/); System Track work touches the loop script, the
+# wrapper, root docs, and the chapter's own folder. Without these the
+# feat(X.Y): commits land empty of code — see fix(1.2,1.3) for the
+# precedent that motivated this env var.
+export EXTRA_STAGE_PATHS="scripts/ system/ README.md CLAUDE.md TIMELINE.md"
+
 cd "$REPO_ROOT"
 exec "$LOOP_SCRIPT" \
   --prd "$PRD_REL" \
