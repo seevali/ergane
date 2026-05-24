@@ -46,24 +46,33 @@ Add a `--dry-run-prompts` CLI flag that calls `load_prompt_layers()` for each ro
 - `--help` mentions the new flag.
 - After this story lands, update `system/ralph-loop-system.sh`'s default checkpoint to include `./scripts/ralph-loop.sh --dry-run-prompts >/dev/null` as a syntax-plus-prompts gate.
 
-### Story 1.4: Byte-diff gate
+### Story 1.4: Semantic equivalence gate
 
-Capture pre-refactor output of `--dry-run-prompts` against the *current* hardcoded prompts (via a temporary patch that makes `load_prompt_layers()` return the heredoc content verbatim). Compare against post-refactor output where `load_prompt_layers()` reads from the new files (created in story 1.1). Resolve any trailing-newline / ordering differences until the diff is empty.
+**Note on scope change (2026-05-25):** This story was originally specified as a byte-diff gate, but that approach is architecturally impossible. The chapter plan deliberately reorders the prompt assembly — Layer 1 (Execution Context) comes BEFORE Layer 2 (BMAD persona), whereas the original heredocs put the persona first with Execution Context bundled into the trailing `common` block. This reordering is a *feature* (Layer 1's "do not HALT" override needs to win against any contradictory persona instructions), so the two assemblies cannot be byte-identical by design. The actual goal — "1.5 doesn't accidentally drop content from the original prompts" — is achievable with a **semantic** equivalence check that compares the *information present* in both assemblies, regardless of ordering.
 
-This story produces a check artifact, not a permanent code change. The diff process is documented for future re-runs.
+Build a re-runnable verification script that captures both the pre-refactor heredoc output (via `build_system_prompts()`) and the post-refactor layered output (via `--dry-run-prompts`), then verifies semantic equivalence by checking that every distinct content line from the original is present somewhere in the new output. Resolve any genuine content gaps (missing rules, dropped sentences) by fixing the prompt files in `scripts/prompts/`. Ordering, formatting, and separator differences are expected and allowed.
+
+This story produces a re-runnable check artifact, not a permanent code change to `scripts/ralph-loop.sh`. The script is what story 1.5 will re-run after the heredoc deletion to confirm nothing was lost.
 
 **Acceptance criteria:**
-- Pre- and post-refactor `--dry-run-prompts` output diff is empty (byte-identical).
-- Diff procedure is documented in `system/chapters/2026-05-24-modularize-loop-prompts/artifacts/byte-diff-check.md` so it can be re-run by a future contributor.
+- A verification script exists at `system/chapters/2026-05-24-modularize-loop-prompts/artifacts/verify-semantic-equivalence.sh` that:
+  - Captures the pre-refactor output: runs the current `build_system_prompts()` (still heredoc-based) and dumps the three resolved `SYSTEM_PROMPT_*` variables to a temp file.
+  - Captures the post-refactor output: runs `./scripts/ralph-loop.sh --dry-run-prompts` and extracts the three role-delimited prompts.
+  - For each role, verifies that every **significant content line** from the pre-refactor output appears as a substring of the post-refactor output. "Significant" = non-empty, not a section header line (`## ...`), not a separator (`---`), not a stub heading (`# Agent Persona`).
+  - Exits 0 if all three roles pass; exits 1 with diagnostic output (which role failed, which lines are missing) otherwise.
+- Script runs cleanly (exit 0) against the current state of the codebase, demonstrating that the layered prompts from story 1.1's files cover all the content from the original heredocs.
+- The script is bash, `set -euo pipefail`, and re-runnable from the repo root.
+- A brief README at `system/chapters/2026-05-24-modularize-loop-prompts/artifacts/README.md` explains the script's purpose and usage in 6-10 lines.
+- `build_system_prompts()` and the heredocs are NOT modified by this story — only the verification artifact is added.
 
 ### Story 1.5: Wire the loader and delete inline heredocs
 
-Modify `build_system_prompts()` in `scripts/ralph-loop.sh` to call `load_prompt_layers(role)` instead of using the inline heredocs. Delete the now-unused `common`/SM/Dev/Review heredocs (~110 lines). Re-run the byte-diff gate from story 1.4 — must still be empty.
+Modify `build_system_prompts()` in `scripts/ralph-loop.sh` to call `load_prompt_layers(role)` instead of using the inline heredocs. Delete the now-unused `common`/SM/Dev/Review heredocs (~110 lines). Re-run the semantic equivalence gate from story 1.4 — must still pass.
 
 **Acceptance criteria:**
-- `build_system_prompts()` calls `load_prompt_layers()` for each role.
-- The inline heredocs for `common`, SM, Dev, Review wrappers are removed from `scripts/ralph-loop.sh`.
-- `./scripts/ralph-loop.sh --dry-run-prompts` output is byte-identical to the snapshot from story 1.4.
+- `build_system_prompts()` calls `load_prompt_layers()` for each role, and assigns the result to `SYSTEM_PROMPT_SM`, `SYSTEM_PROMPT_DEV`, `SYSTEM_PROMPT_REVIEW`.
+- The inline `common`/SM/Dev/Review heredocs are removed from `scripts/ralph-loop.sh`.
+- After the rewire, running `bash system/chapters/2026-05-24-modularize-loop-prompts/artifacts/verify-semantic-equivalence.sh` still exits 0 — every significant line from the original heredocs is still present in the layered output. (The pre-refactor capture step in the script needs to be adapted since the heredocs no longer exist; either use a snapshot file produced during story 1.4 and committed, or read the original content from the prompt files directly.)
 - `bash -n scripts/ralph-loop.sh` passes.
 
 ### Story 1.6: Documentation update

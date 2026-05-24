@@ -121,17 +121,19 @@ Called once per role from the existing `build_system_prompts()` function near th
 1. **Extract literal text.** Create the `scripts/prompts/` tree per the layout above. Copy persona/rule text verbatim from `scripts/ralph-loop.sh` — no rewrites, no edits.
 2. **Add the loader.** Define `load_prompt_layers()` in `scripts/ralph-loop.sh` alongside the existing BMAD loader. Don't wire it up yet.
 3. **Add `--dry-run-prompts` flag.** Prints each resolved system prompt to stdout and exits before any `claude` invocation. This is the test harness for steps 4–6.
-4. **Byte-diff gate.** Run `--dry-run-prompts` against the demo install. Compare against `git stash`-ed pre-refactor output. Resolve any trailing-newline / ordering differences until diff is empty.
-5. **Wire it in.** Make `build_system_prompts()` call `load_prompt_layers()`. Delete the inline `common`/SM/Dev/Review heredocs from the script (~140 line removal). Re-run dry-run, confirm diff is still empty.
+4. **Semantic equivalence gate.** Build a verification script that captures both the pre-refactor heredoc output (via `build_system_prompts()`) and the post-refactor layered output (via `--dry-run-prompts`), then checks that every significant content line from the original is present in the new output. Ordering, formatting, and separator differences are expected — the layer ordering is deliberately different. See story 1.4 in the epic for the full acceptance criteria and the rationale.
+5. **Wire it in.** Make `build_system_prompts()` call `load_prompt_layers()`. Delete the inline `common`/SM/Dev/Review heredocs from the script (~140 line removal). Re-run the semantic equivalence script, confirm it still passes.
 6. **Update docs.** Mention `scripts/prompts/` in [README.md](../../../README.md) "Repo layout" and [CLAUDE.md](../../../CLAUDE.md) "Repo layout". Add a one-paragraph explainer of the 3-layer model for users who fork this demo for a different stack.
 
-Step 4's byte-diff is the safety gate. Steps 5 and 6 are reversible if step 4 surfaces a regression. The epic at [epics/modularize-loop-prompts.md](epics/modularize-loop-prompts.md) breaks these into the stories the loop will run.
+Step 4's semantic check is the safety gate. Steps 5 and 6 are reversible if step 4 surfaces a regression. The epic at [epics/modularize-loop-prompts.md](epics/modularize-loop-prompts.md) breaks these into the stories the loop will run.
+
+> **Why semantic and not byte-diff?** The original heredocs put `# Agent Persona`/persona content FIRST and bundle Execution Context inside the trailing `common` block. The new 3-layer assembly deliberately reorders this — Layer 1 (Execution Context) is FIRST so its "do not HALT, skip On Activation" rules override the BMAD persona's contradictory interactive instructions. This reordering is a *feature*, not a bug, so the two assemblies cannot be byte-identical by design. A byte-diff gate would always fail on this chapter; a semantic equivalence check ("all the same rules are still there") is the right primitive.
 
 ---
 
 ## Test plan (no overnight run required)
 
-- **Byte-diff dry-run** (primary gate): empty diff between pre- and post-refactor `--dry-run-prompts` output → caching preserved.
+- **Semantic equivalence check** (primary gate): script produced in story 1.4 confirms that every significant content line from the pre-refactor heredoc output is present in the post-refactor `--dry-run-prompts` output. Ordering differences are expected and allowed — the 3-layer reordering is intentional.
 - **Persona-absence test:** `mv .claude/skills .claude/skills.bak && ./scripts/ralph-loop.sh --dry-run-prompts`. Confirm fallback MDs load and the script logs `using inline fallback` for each role. Restore.
 - **Single-story smoke run:** `./scripts/ralph-loop.sh --stories 1.1 --max-budget-usd 1`. Confirm SM produces a story spec; confirm prompt cache hits appear in per-invocation log (`cache_read > 0` on the Dev call after the SM call, since Layer 1+3 overlap across roles).
 - **BMAD-update simulation:** edit `.claude/skills/bmad-dev-story/SKILL.md` (add a line). Re-run `--dry-run-prompts`. Confirm the Dev prompt reflects the edit *without* touching `scripts/ralph-loop.sh`. This directly verifies the stated goal.
