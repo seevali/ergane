@@ -552,6 +552,19 @@ mark_story_complete() {
   :   # No-op: completion tracked via git commits + artifacts.
 }
 
+# Read a review file's verdict. The agent is instructed to write REVIEW_PASSED
+# or REVIEW_FAILED on the first line, but LLMs sometimes wrap the verdict in a
+# markdown title (e.g. "# Story 1.1 Code Review" before the marker). Be lenient
+# and search for the first line that starts with either marker.
+# Returns 0 if PASSED, non-zero otherwise (file missing, FAILED, or no verdict).
+is_review_passed() {
+  local review_file="$1"
+  [[ -f "$review_file" ]] || return 1
+  local verdict
+  verdict=$(grep -m1 -E '^(REVIEW_PASSED|REVIEW_FAILED)' "$review_file" 2>/dev/null || true)
+  [[ "$verdict" == "REVIEW_PASSED" ]]
+}
+
 # ════════════════════════════════════════════════════════════════
 # Progress File
 # ════════════════════════════════════════════════════════════════
@@ -996,11 +1009,14 @@ Apply the review standards and cross-story root-cause rules from your system pro
 Write your review to ${STORIES_DIR}/${story_id}-review.md.
 
 If ALL checks pass:
-  Start the file with: REVIEW_PASSED
-  Then write a brief summary of what was reviewed.
+  The LITERAL FIRST LINE of the file MUST be exactly: REVIEW_PASSED
+  Do NOT precede it with a markdown title (e.g. "# Story X Code Review"),
+  a heading, or any preamble. The very first character of the file is "R".
+  Then write a brief summary of what was reviewed on the lines that follow.
 
 If ANY check fails:
-  Start the file with: REVIEW_FAILED
+  The LITERAL FIRST LINE of the file MUST be exactly: REVIEW_FAILED
+  Do NOT precede it with a markdown title or any preamble.
   Then list each specific issue with file paths and line references.
   Be specific enough for the Dev agent to fix without ambiguity.
   If the root cause is in a previous story, include the UPSTREAM_FIX_REQUIRED block
@@ -1037,7 +1053,7 @@ Re-read the relevant artifacts before deciding:
 - ${STORIES_DIR}/${story_id}-done.md (the implementation summary)
 - Any test or source files implicated in the failure output below
 
-Then overwrite ${STORIES_DIR}/${story_id}-review.md, starting with REVIEW_FAILED on the first line, followed by precise file paths, line references, and corrective instructions the Dev agent can act on without further interpretation. If the failure is a flaky test, identify the test and prescribe a deterministic fix (do not instruct the Dev agent to disable or skip it).
+Then overwrite ${STORIES_DIR}/${story_id}-review.md. The LITERAL FIRST LINE of the file MUST be exactly REVIEW_FAILED (no markdown title, no preamble — the very first character is "R"), followed on subsequent lines by precise file paths, line references, and corrective instructions the Dev agent can act on without further interpretation. If the failure is a flaky test, identify the test and prescribe a deterministic fix (do not instruct the Dev agent to disable or skip it).
 
 Here is the captured error (last 200 lines of the checkpoint output):
 
@@ -1183,7 +1199,7 @@ verify_cascade() {
     local intermediate_count=0
     for ((i=upstream_idx+1; i<current_idx; i++)); do
       local mid_story="${STORY_LIST[$i]}"
-      if [[ -f "${STORIES_DIR}/${mid_story}-review.md" ]] && head -1 "${STORIES_DIR}/${mid_story}-review.md" | grep -q "REVIEW_PASSED"; then
+      if is_review_passed "${STORIES_DIR}/${mid_story}-review.md"; then
         log_info "  Intermediate story $mid_story: previously passed review, checkpoint still green"
         ((intermediate_count++)) || true
       fi
@@ -1229,9 +1245,7 @@ main() {
     local _pre_spec_existed=false _pre_done_existed=false _pre_review_passed=false
     [[ -f "${STORIES_DIR}/${story_id}.md" ]] && _pre_spec_existed=true
     [[ -f "${STORIES_DIR}/${story_id}-done.md" ]] && _pre_done_existed=true
-    [[ -f "${STORIES_DIR}/${story_id}-review.md" ]] \
-      && head -1 "${STORIES_DIR}/${story_id}-review.md" 2>/dev/null | grep -q "REVIEW_PASSED" \
-      && _pre_review_passed=true
+    is_review_passed "${STORIES_DIR}/${story_id}-review.md" && _pre_review_passed=true
 
     if [[ -z "$story_content" ]]; then
       log_error "Story $story_id not found in $EPIC_FILE. Stopping."
@@ -1352,7 +1366,7 @@ SALVAGE_DONE
     # ── Step 3: Code Review (with retry loop) ──
     local review_passed=false
 
-    if [[ -f "${STORIES_DIR}/${story_id}-review.md" ]] && head -1 "${STORIES_DIR}/${story_id}-review.md" | grep -q "REVIEW_PASSED"; then
+    if is_review_passed "${STORIES_DIR}/${story_id}-review.md"; then
       log_info "[$story_id] Step 3/3: Review already passed — skipping"
       review_passed=true
     else
@@ -1381,7 +1395,7 @@ SALVAGE_DONE
 
       step_dur=$(( $(date +%s) - step_start ))
 
-      if [[ -f "${STORIES_DIR}/${story_id}-review.md" ]] && head -1 "${STORIES_DIR}/${story_id}-review.md" | grep -q "REVIEW_PASSED"; then
+      if is_review_passed "${STORIES_DIR}/${story_id}-review.md"; then
         log_success "[$story_id] Step 3/3: REVIEW_PASSED (${step_dur}s)"
         review_passed=true
       else
@@ -1519,7 +1533,7 @@ SALVAGE_DONE
 
         step_dur=$(( $(date +%s) - step_start ))
 
-        if [[ -f "${STORIES_DIR}/${story_id}-review.md" ]] && head -1 "${STORIES_DIR}/${story_id}-review.md" | grep -q "REVIEW_PASSED"; then
+        if is_review_passed "${STORIES_DIR}/${story_id}-review.md"; then
           log_success "[$story_id] REVIEW_PASSED after upstream fix to $upstream_story (${step_dur}s)"
           review_passed=true
           STORY_NOTES[$idx]="Upstream fix applied to $upstream_story"
@@ -1584,7 +1598,7 @@ SALVAGE_DONE
 
         step_dur=$(( $(date +%s) - step_start ))
 
-        if [[ -f "${STORIES_DIR}/${story_id}-review.md" ]] && head -1 "${STORIES_DIR}/${story_id}-review.md" | grep -q "REVIEW_PASSED"; then
+        if is_review_passed "${STORIES_DIR}/${story_id}-review.md"; then
           log_success "[$story_id] Step 3/3: REVIEW_PASSED on retry $retry_count (${step_dur}s)"
           review_passed=true
         else
@@ -1656,7 +1670,7 @@ SALVAGE_DONE
         exit 1
       fi
 
-      if [[ -f "${STORIES_DIR}/${story_id}-review.md" ]] && head -1 "${STORIES_DIR}/${story_id}-review.md" | grep -q "REVIEW_PASSED"; then
+      if is_review_passed "${STORIES_DIR}/${story_id}-review.md"; then
         log_error "[$story_id] Auto-heal: review agent ignored the injection and re-emitted REVIEW_PASSED. Aborting."
         log_error "$chk_output"
         STORY_STATUSES[$idx]="Failed"
