@@ -223,9 +223,11 @@ ARCH_FILE="$(resolve_optional_doc "$ARCH_FILE")"
 [[ -n "$PRD_FILE"  && ! -f "$PRD_FILE"  ]] && echo -e "${YELLOW}Warning: PRD file not found at $PRD_FILE${NC}"
 [[ -n "$ARCH_FILE" && ! -f "$ARCH_FILE" ]] && echo -e "${YELLOW}Warning: Architecture doc not found at $ARCH_FILE${NC}"
 
-# Story specs, per-story progress, and review notes all live in docs/stories/
-# (BMAD's implementation_artifacts location for this repo).
-STORIES_DIR="$REPO_ROOT/docs/stories"
+# Story specs, per-story progress, and review notes default to docs/stories/
+# (BMAD's implementation_artifacts location for this repo). System Track runs
+# override this via the STORIES_DIR env var so each chapter keeps its own
+# stories under system/chapters/<chapter>/stories/.
+STORIES_DIR="${STORIES_DIR:-$REPO_ROOT/docs/stories}"
 LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/ralph-loop-$(date +%Y-%m-%d-%H-%M).log"
 MASTER_PROGRESS_FILE="$STORIES_DIR/ralph-sprint-progress.md"

@@ -12,7 +12,7 @@ Extract the loop's hardcoded prompt content into a layered file structure and li
 
 ## Stories
 
-### 1.1 — Extract repo-local prompt files
+### Story 1.1: Extract repo-local prompt files
 
 Create the `scripts/prompts/` tree per the chapter plan's file layout. Extract the literal text from `scripts/ralph-loop.sh` heredocs (common block, SM/Dev/Review overlays, fallback stubs) into separate `.md` files. Do **not** modify `scripts/ralph-loop.sh` yet — just create the new files.
 
@@ -24,7 +24,7 @@ Create the `scripts/prompts/` tree per the chapter plan's file layout. Extract t
 - `scripts/prompts/bmad-fallbacks/sm.md`, `.../dev.md`, `.../review.md` exist with the current inline fallback stubs.
 - No changes to `scripts/ralph-loop.sh`.
 
-### 1.2 — Add `load_prompt_layers()` helper
+### Story 1.2: Add `load_prompt_layers()` helper
 
 Add the loader function to `scripts/ralph-loop.sh` alongside the existing BMAD persona loader. The function reads Layer 1 + Layer 2 + Layer 3, applies the `{{CHECKPOINT_CMD}}` substitution, and returns the assembled string. Do **not** wire it up to `build_system_prompts()` yet.
 
@@ -35,7 +35,7 @@ Add the loader function to `scripts/ralph-loop.sh` alongside the existing BMAD p
 - `bash -n scripts/ralph-loop.sh` passes (syntax valid).
 - `build_system_prompts()` is unchanged — no behavior change yet.
 
-### 1.3 — Add `--dry-run-prompts` flag
+### Story 1.3: Add `--dry-run-prompts` flag
 
 Add a `--dry-run-prompts` CLI flag that calls `load_prompt_layers()` for each role, prints the resolved system prompt to stdout, and exits 0 before any `claude` invocation. This is the safety harness for stories 1.4 and 1.5.
 
@@ -46,7 +46,7 @@ Add a `--dry-run-prompts` CLI flag that calls `load_prompt_layers()` for each ro
 - `--help` mentions the new flag.
 - After this story lands, update `system/ralph-loop-system.sh`'s default checkpoint to include `./scripts/ralph-loop.sh --dry-run-prompts >/dev/null` as a syntax-plus-prompts gate.
 
-### 1.4 — Byte-diff gate
+### Story 1.4: Byte-diff gate
 
 Capture pre-refactor output of `--dry-run-prompts` against the *current* hardcoded prompts (via a temporary patch that makes `load_prompt_layers()` return the heredoc content verbatim). Compare against post-refactor output where `load_prompt_layers()` reads from the new files (created in story 1.1). Resolve any trailing-newline / ordering differences until the diff is empty.
 
@@ -56,7 +56,7 @@ This story produces a check artifact, not a permanent code change. The diff proc
 - Pre- and post-refactor `--dry-run-prompts` output diff is empty (byte-identical).
 - Diff procedure is documented in `system/chapters/2026-05-24-modularize-loop-prompts/artifacts/byte-diff-check.md` so it can be re-run by a future contributor.
 
-### 1.5 — Wire the loader and delete inline heredocs
+### Story 1.5: Wire the loader and delete inline heredocs
 
 Modify `build_system_prompts()` in `scripts/ralph-loop.sh` to call `load_prompt_layers(role)` instead of using the inline heredocs. Delete the now-unused `common`/SM/Dev/Review heredocs (~110 lines). Re-run the byte-diff gate from story 1.4 — must still be empty.
 
@@ -66,7 +66,7 @@ Modify `build_system_prompts()` in `scripts/ralph-loop.sh` to call `load_prompt_
 - `./scripts/ralph-loop.sh --dry-run-prompts` output is byte-identical to the snapshot from story 1.4.
 - `bash -n scripts/ralph-loop.sh` passes.
 
-### 1.6 — Documentation update
+### Story 1.6: Documentation update
 
 Update root [`README.md`](../../../../README.md) (Repo layout block) and root [`CLAUDE.md`](../../../../CLAUDE.md) (Repo layout) to mention `scripts/prompts/`. Add a one-paragraph explainer of the 3-layer model so users who fork this demo for a different stack know where to make their changes.
 

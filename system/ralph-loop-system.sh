@@ -134,6 +134,12 @@ echo "→ Stories:  $STORIES_REL"
 echo "→ Loop:     scripts/ralph-loop.sh --project-dir ."
 echo
 
+# Override the loop's default STORIES_DIR so SM-generated story specs land
+# in the chapter's stories/ folder, not in docs/stories/ (which belongs to
+# the Demo Track). The loop reads STORIES_DIR via env var since the
+# fix(system): unblock first chapter run commit.
+export STORIES_DIR="$REPO_ROOT/$STORIES_REL"
+
 cd "$REPO_ROOT"
 exec "$LOOP_SCRIPT" \
   --prd "$PRD_REL" \
