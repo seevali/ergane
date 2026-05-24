@@ -25,11 +25,14 @@ The point isn't the app. The point is watching agents collaborate to build it.
 .
 ├── docs/         # PRD, epics, stories — the BMAD agents' working artifacts
 ├── scripts/      # ralph-loop.sh — the orchestrator
+│   └── prompts/  # externalized system prompts (3-layer composition)
 ├── src/          # the React app being built
 ├── _bmad/        # BMAD Method install (created during setup; self-contained)
 ├── system/       # how the loop itself is improved — see "Two Tracks" below
 └── TIMELINE.md   # chronological log of how this repo has evolved
 ```
+
+**System prompts & customization:** The loop composes system prompts from three layers: (1) execution-context overrides that ensure the loop runs non-interactively, (2) live-loaded BMAD persona files from `.claude/skills/`, and (3) stack-specific demo rules (React/TypeScript conventions, review standards). Files for layers 1 and 3 live in `scripts/prompts/` — if you fork this demo for a different stack, customize the prompts there rather than editing the loop script. See [`scripts/prompts/README.md`](scripts/prompts/README.md) for the full composition model and how to extend it.
 
 ## Prerequisites
 

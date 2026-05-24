@@ -10,7 +10,8 @@ This file gives agents working inside the loop the conventions they need. The [R
 
 - `src/` — React + Vite + TypeScript app the loop is building (Demo Track)
 - `docs/` — BMAD-managed: `prd.md`, `epics/`, `stories/` (Demo Track)
-- `scripts/ralph-loop.sh` — the orchestrator (shared by both tracks)
+- `scripts/ralph-loop.sh` — the orchestrator, with system prompts composed from external layers
+- `scripts/prompts/` — externalized system prompts (execution-context, BMAD personas, stack rules)
 - `_bmad/` — BMAD Method install, **core + bmm modules only**
 - `system/` — System Track: loop-improvement work, organized as chapters under [`system/chapters/`](system/chapters/) (see [system/README.md](system/README.md) for the chapter convention)
 - `TIMELINE.md` — chronological log of repo evolution; entries tagged `[Demo]` or `[System]`

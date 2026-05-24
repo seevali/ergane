@@ -2,7 +2,7 @@
 
 **Chapter:** `2026-05-24-modularize-loop-prompts`
 **Date:** 2026-05-24
-**Status:** accepted, ready for loop execution
+**Status:** complete
 **Author:** Seevali Rathnayake (with Claude Opus 4.7 as plan agent)
 **Target file:** [scripts/ralph-loop.sh](../../../scripts/ralph-loop.sh)
 **PRD:** [prd.md](prd.md)
