@@ -146,8 +146,8 @@ The Demo Track was built as a **template**. To use the Ralph Loop pattern on you
 
 | What | Where | Notes |
 |---|---|---|
-| Your PRD | `docs/prd.md` | Use the BMAD PM agent to generate, or write manually. |
-| Your epic(s) + stories | `docs/epics/*.md` | Each story header MUST be `### Story X.Y: Title` — the loop's parser is strict. |
+| Your PRD | `docs/prd.md` | Use the BMAD PM agent (`@bmad-agent-pm`) to generate, or write manually. |
+| Your epic + story **stubs** | `docs/epics/*.md` | Just title + brief acceptance criteria per story — not full implementation specs. The loop's SM agent expands each stub into a detailed spec at run time (writes to `docs/stories/<id>.md`). Use the BMAD epics workflow (`@bmad-create-epics-and-stories`) to generate from your PRD, or write manually. Story headers MUST be `### Story X.Y: Title` — the loop's parser is strict on that line. |
 | Your app source | `src/` | Or override the path with `--project-dir <your-app-dir>`. |
 
 ### 2. Customize the prompts
