@@ -9,9 +9,9 @@
 | Field | Value |
 |-------|-------|
 | **Epic** | 1 |
-| **Run started** | 2026-06-13 00:39 |
-| **Last updated** | 2026-06-13 00:39:08 |
-| **Elapsed** | 1s |
+| **Run started** | 2026-06-13 00:44 |
+| **Last updated** | 2026-06-13 00:44:38 |
+| **Elapsed** | 0s |
 | **Agent invocations** | 0 |
 | **Total cost** | $0 |
 | **Input tokens** | 0 |
@@ -25,19 +25,33 @@
 | **Project dir** | `.` |
 | **Epic file** | `/home/seevali/projects/Metis/demos/ralph-loop-demo/system/chapters/2026-06-13-ralph-loop-installer/epics/ralph-loop-installer.md` |
 | **Checkpoint** | `bash -n /home/seevali/projects/Metis/demos/ralph-loop-demo/scripts/ralph-loop.sh && bash -n /home/seevali/projects/Metis/demos/ralph-loop-demo/system/ralph-loop-system.sh && /home/seevali/projects/Metis/demos/ralph-loop-demo/scripts/ralph-loop.sh --dry-run-prompts >/dev/null` |
-| **Log file** | `/home/seevali/projects/Metis/demos/ralph-loop-demo/scripts/logs/ralph-loop-2026-06-13-00-39.log` |
+| **Log file** | `/home/seevali/projects/Metis/demos/ralph-loop-demo/scripts/logs/ralph-loop-2026-06-13-00-44.log` |
 
 ### Status Breakdown
 
 | Done | In Progress | Pending | Manual Review | Failed | Total |
 |------|-------------|---------|---------------|--------|-------|
-| 0 | 1 | 0 | 0 | 0 | 1 |
+| 1 | 1 | 13 | 0 | 0 | 15 |
 
 ### Story Details
 
 | Story | Title | Status | Duration | Retries | Cost | Notes |
 |-------|-------|--------|----------|---------|------|-------|
-| 1.1 | Amend stack rules and repo docs for the installer directory | In Progress | — | — | $0 | — |
+| 1.1 | Amend stack rules and repo docs for the installer directory | Done | — | — | $0 | Pre-completed (artifacts present at iteration entry) |
+| 1.2 | Scaffold the installer npm package | In Progress | — | — | $0 | — |
+| 1.3 | Template sync script with drift gate | Pending | — | — | $0 | — |
+| 1.4 | Preflight checks module | Pending | — | — | $0 | — |
+| 2.1 | Target-directory classifier | Pending | — | — | $0 | — |
+| 2.2 | Wizard flow building the InstallPlan | Pending | — | — | $0 | — |
+| 2.3 | Write engine, conflict handling, and manifest | Pending | — | — | $0 | — |
+| 2.4 | BMAD install step | Pending | — | — | $0 | — |
+| 2.5 | Post-install outro, GETTING-STARTED, and doctor | Pending | — | — | $0 | — |
+| 3.1 | Non-interactive mode | Pending | — | — | $0 | — |
+| 3.2 | Update flow | Pending | — | — | $0 | — |
+| 3.3 | Uninstall | Pending | — | — | $0 | — |
+| 4.1 | E2E suite | Pending | — | — | $0 | — |
+| 4.2 | Documentation rewrite | Pending | — | — | $0 | — |
+| 4.3 | Release preparation | Pending | — | — | $0 | — |
 
 ### Upstream Fixes Applied
 
@@ -47,4 +61,18 @@ _None_
 
 | Story | Title | Epic | Final Status |
 |-------|-------|------|-------------|
-| 1.1 | Amend stack rules and repo docs for the installer directory | 1 | In Progress |
+| 1.1 | Amend stack rules and repo docs for the installer directory | 1 | Done |
+| 1.2 | Scaffold the installer npm package | 1 | In Progress |
+| 1.3 | Template sync script with drift gate | 1 | Pending |
+| 1.4 | Preflight checks module | 1 | Pending |
+| 2.1 | Target-directory classifier | 1 | Pending |
+| 2.2 | Wizard flow building the InstallPlan | 1 | Pending |
+| 2.3 | Write engine, conflict handling, and manifest | 1 | Pending |
+| 2.4 | BMAD install step | 1 | Pending |
+| 2.5 | Post-install outro, GETTING-STARTED, and doctor | 1 | Pending |
+| 3.1 | Non-interactive mode | 1 | Pending |
+| 3.2 | Update flow | 1 | Pending |
+| 3.3 | Uninstall | 1 | Pending |
+| 4.1 | E2E suite | 1 | Pending |
+| 4.2 | Documentation rewrite | 1 | Pending |
+| 4.3 | Release preparation | 1 | Pending |
