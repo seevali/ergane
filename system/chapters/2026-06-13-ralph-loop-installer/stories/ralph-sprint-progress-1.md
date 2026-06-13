@@ -4,13 +4,13 @@
 |-------|-------|
 | **Epic** | 1 |
 | **Run started** | 2026-06-13 06:10 |
-| **Last updated** | 2026-06-13 07:19:32 |
-| **Elapsed** | 68m 55s |
-| **Agent invocations** | 18 |
-| **Total cost** | $17.5076 |
-| **Input tokens** | 80664 |
-| **Output tokens** | 263720 |
-| **Cache-read tokens** | 21926197 |
+| **Last updated** | 2026-06-13 07:36:57 |
+| **Elapsed** | 86m 20s |
+| **Agent invocations** | 23 |
+| **Total cost** | $22.8717 |
+| **Input tokens** | 104202 |
+| **Output tokens** | 330596 |
+| **Cache-read tokens** | 28505864 |
 | **Max iterations** | 50 |
 | **Max review retries** | 3 |
 | **Max upstream depth** | 1 |
@@ -25,7 +25,7 @@
 
 | Done | In Progress | Pending | Manual Review | Failed | Total |
 |------|-------------|---------|---------------|--------|-------|
-| 8 | 1 | 6 | 0 | 0 | 15 |
+| 9 | 1 | 5 | 0 | 0 | 15 |
 
 ### Story Details
 
@@ -39,8 +39,8 @@
 | 2.2 | Wizard flow building the InstallPlan | Done | 19m 44s | 1 | $5.4358 | — |
 | 2.3 | Write engine, conflict handling, and manifest | Done | 18m 12s | 0 | $3.7385 | — |
 | 2.4 | BMAD install step | Done | 11m 06s | 0 | $3.1629 | — |
-| 2.5 | Post-install outro, GETTING-STARTED, and doctor | In Progress | — | — | $0 | — |
-| 3.1 | Non-interactive mode | Pending | — | — | $0 | — |
+| 2.5 | Post-install outro, GETTING-STARTED, and doctor | Done | 17m 25s | 1 | $5.3641 | — |
+| 3.1 | Non-interactive mode | In Progress | — | — | $0 | — |
 | 3.2 | Update flow | Pending | — | — | $0 | — |
 | 3.3 | Uninstall | Pending | — | — | $0 | — |
 | 4.1 | E2E suite | Pending | — | — | $0 | — |
