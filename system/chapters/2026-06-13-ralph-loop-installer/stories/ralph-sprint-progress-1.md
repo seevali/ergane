@@ -4,13 +4,13 @@
 |-------|-------|
 | **Epic** | 1 |
 | **Run started** | 2026-06-13 13:09 |
-| **Last updated** | 2026-06-13 13:16:20 |
-| **Elapsed** | 6m 35s |
-| **Agent invocations** | 2 |
-| **Total cost** | $2.3960 |
-| **Input tokens** | 12215 |
-| **Output tokens** | 21455 |
-| **Cache-read tokens** | 3201822 |
+| **Last updated** | 2026-06-13 13:23:44 |
+| **Elapsed** | 13m 59s |
+| **Agent invocations** | 5 |
+| **Total cost** | $3.9500 |
+| **Input tokens** | 24099 |
+| **Output tokens** | 48686 |
+| **Cache-read tokens** | 4647841 |
 | **Max iterations** | 50 |
 | **Max review retries** | 3 |
 | **Max upstream depth** | 1 |
@@ -25,7 +25,7 @@
 
 | Done | In Progress | Pending | Manual Review | Failed | Total |
 |------|-------------|---------|---------------|--------|-------|
-| 13 | 1 | 1 | 0 | 0 | 15 |
+| 14 | 1 | 0 | 0 | 0 | 15 |
 
 ### Story Details
 
@@ -44,8 +44,8 @@
 | 3.2 | Update flow | Done | — | — | $0 | Pre-completed (artifacts present at iteration entry) |
 | 3.3 | Uninstall | Done | — | — | $0 | Pre-completed (artifacts present at iteration entry) |
 | 4.1 | E2E suite | Done | 6m 32s | 0 | $2.3960 | — |
-| 4.2 | Documentation rewrite | In Progress | — | — | $0 | — |
-| 4.3 | Release preparation | Pending | — | — | $0 | — |
+| 4.2 | Documentation rewrite | Done | 7m 24s | 0 | $1.5540 | — |
+| 4.3 | Release preparation | In Progress | — | — | $0 | — |
 
 ### Upstream Fixes Applied
 
