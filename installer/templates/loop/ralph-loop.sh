@@ -78,40 +78,14 @@ ESCALATION_MODEL="opus"        # Model to escalate to on failed dev/fix retry.
 ESCALATION_TURNS_MULTIPLIER=2  # Turn cap multiplier applied on escalated attempt.
 BUDGET_PER_STORY_USD=""        # Hard dollar cap per story; abort if cumulative spend exceeds.
 
-# ──── Path A (intake) defaults ────
-# Presence of --issue selects Path A: Phase 0 (Plan) turns a GitHub issue into a
-# PRD / optional architecture / epic, then Phase 2 (the existing loop) builds it.
-ISSUE_NUMBER=""                # Empty = Path B (execute). Non-empty = Path A (intake).
-REPO_SLUG=""                   # OWNER/NAME; default resolved via `gh repo view`.
-PLAN_ONLY=false                # --plan-only: run Phase 0 then stop (human review).
-EPIC_EXPLICIT=false            # True once --epic is passed (for --issue/--epic mutual exclusion).
-STORIES_EXPLICIT=false         # True once --stories is passed (Path A derives it).
-ARCHITECTURE_MODE="auto"       # auto|always|never — whether Phase 0 runs the architecture step.
-
-# Planning-model routing (Phase 0). Opus for PRD/architecture, sonnet for the
-# epic/story breakdown — the breakdown is mechanical relative to the PRD.
-MODEL_PM="opus"
-MODEL_ARCHITECT="opus"
-MODEL_PLANNER="sonnet"
-MAX_TURNS_PM=30
-MAX_TURNS_ARCHITECT=30
-MAX_TURNS_PLANNER=30
-
 # ──── Argument parsing ────
 usage() {
   cat <<'EOF'
-Usage:
-  Path B (execute):  ralph-loop.sh [--project-dir DIR] [--epic FILE] [--stories LIST] [--checkpoint CMD] [options]
-  Path A (intake):   ralph-loop.sh --issue N [--repo OWNER/NAME] [--checkpoint CMD] [--plan-only] [options]
+Usage: ralph-loop.sh [--project-dir DIR] [--epic FILE] [--stories LIST] [--checkpoint CMD] [options]
 
-The loop has two execution paths:
-  • Path B "execute" (default): build from an existing epic. The four core flags
-    below have demo defaults baked in, so a bare `./scripts/ralph-loop.sh` runs the
-    full Exchange Rates Dashboard build. Pass a flag only to override its default.
-  • Path A "intake" (selected by --issue): turn a single GitHub issue into a PRD /
-    optional architecture / epic (Phase 0), then run the Path B loop on it. In
-    Path A, --epic/--stories are DERIVED from the issue and must not be passed
-    (--issue and --epic are mutually exclusive).
+All four "required" flags below have demo defaults baked in, so a bare
+`./scripts/ralph-loop.sh` runs the full Exchange Rates Dashboard build.
+Pass a flag only to override its default.
 
 Core flags (defaults shown):
   --project-dir DIR        Relative path to the app the agents work inside
@@ -127,20 +101,6 @@ Core flags (defaults shown):
 Optional document references (passed to SM agent for context):
   --prd FILE               Path to the PRD markdown (default: docs/prd.md)
   --arch FILE              Path to an architecture doc (default: unset — this demo has none)
-
-Path A (intake) flags:
-  --issue N                GitHub issue number to plan from. Selects Path A. Phase 0
-                           writes docs/prd/issue-N.md, optional docs/architecture/issue-N.md,
-                           and docs/epics/issue-N.md (stories namespaced as N.1, N.2, …),
-                           then runs the Path B loop on it.
-  --repo OWNER/NAME        Repo to read the issue from (default: resolved via `gh repo view`)
-  --plan-only              Run Phase 0 (plan) then stop — no code changes. (Requires --issue.)
-  --architecture MODE      Whether Phase 0 runs the architecture step: auto|always|never
-                           (default: auto — runs for non-bugs with a design/arch/rfc label
-                           or a long body)
-  --model-pm MODEL         Model for the PRD agent (default: opus)
-  --model-architect MODEL  Model for the architecture agent (default: opus)
-  --model-planner MODEL    Model for the epic/story breakdown agent (default: sonnet)
 
 Loop options:
   --max-iterations N       Max total agent invocations (default: 50)
@@ -173,13 +133,6 @@ Example (run the whole Exchange Rates Dashboard build — these are the defaults
 
 Example (just the first two stories):
   ./scripts/ralph-loop.sh --stories 1.1,1.2
-
-Example (Path A — plan and build from GitHub issue 42):
-  ./scripts/ralph-loop.sh --issue 42 --repo owner/name \
-     --checkpoint 'cd src && npm run build && npm test --if-present'
-
-Example (Path A — plan only, for human review before any dev):
-  ./scripts/ralph-loop.sh --issue 42 --plan-only
 EOF
   exit 1
 }
@@ -187,16 +140,9 @@ EOF
 while [[ $# -gt 0 ]]; do
   case $1 in
     --project-dir)                 PROJECT_DIR_ARG="$2"; shift 2 ;;
-    --epic)                        EPIC_FILE="$2"; EPIC_EXPLICIT=true; shift 2 ;;
-    --stories)                     STORIES_ARG="$2"; STORIES_EXPLICIT=true; shift 2 ;;
+    --epic)                        EPIC_FILE="$2"; shift 2 ;;
+    --stories)                     STORIES_ARG="$2"; shift 2 ;;
     --checkpoint)                  CHECKPOINT_CMD="$2"; shift 2 ;;
-    --issue)                       ISSUE_NUMBER="$2"; shift 2 ;;
-    --repo)                        REPO_SLUG="$2"; shift 2 ;;
-    --plan-only)                   PLAN_ONLY=true; shift ;;
-    --architecture)                ARCHITECTURE_MODE="$2"; shift 2 ;;
-    --model-pm)                    MODEL_PM="$2"; shift 2 ;;
-    --model-architect)             MODEL_ARCHITECT="$2"; shift 2 ;;
-    --model-planner)               MODEL_PLANNER="$2"; shift 2 ;;
     --prd)                         PRD_FILE="$2"; shift 2 ;;
     --arch)                        ARCH_FILE="$2"; shift 2 ;;
     --max-iterations)              MAX_ITERATIONS="$2"; shift 2 ;;
@@ -219,22 +165,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ──── Path selection + path-aware validation ────
-# Path A (intake) is selected by --issue; Path B (execute) is the default.
-if [[ -n "$ISSUE_NUMBER" ]]; then
-  # Path A: --epic/--stories are DERIVED from the issue, not required.
-  [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]] && { echo -e "${RED}Error: --issue must be a positive integer (got '$ISSUE_NUMBER')${NC}"; usage; }
-  $EPIC_EXPLICIT && { echo -e "${RED}Error: --issue and --epic are mutually exclusive (Path A derives the epic from the issue)${NC}"; usage; }
-  $STORIES_EXPLICIT && echo -e "${YELLOW}Warning: --stories is ignored in Path A (intake); all generated stories are run${NC}"
-  case "$ARCHITECTURE_MODE" in auto|always|never) ;; *) echo -e "${RED}Error: --architecture must be auto|always|never (got '$ARCHITECTURE_MODE')${NC}"; usage ;; esac
-else
-  # Path B: the existing required-args contract (defaults are baked in, so these
-  # only fire if a user explicitly blanks one out).
-  $PLAN_ONLY && { echo -e "${RED}Error: --plan-only requires --issue (it stops after the Phase 0 plan, which only Path A runs)${NC}"; usage; }
-  [[ -z "$EPIC_FILE" ]]   && { echo -e "${RED}Error: --epic is required${NC}"; usage; }
-  [[ -z "$STORIES_ARG" ]] && { echo -e "${RED}Error: --stories is required${NC}"; usage; }
-fi
 [[ -z "$PROJECT_DIR_ARG" ]] && { echo -e "${RED}Error: --project-dir is required${NC}"; usage; }
+[[ -z "$EPIC_FILE" ]]       && { echo -e "${RED}Error: --epic is required${NC}"; usage; }
+[[ -z "$STORIES_ARG" ]]     && { echo -e "${RED}Error: --stories is required${NC}"; usage; }
 [[ -z "$CHECKPOINT_CMD" ]]  && { echo -e "${RED}Error: --checkpoint is required${NC}"; usage; }
 
 # ──── Dependency checks ────
@@ -266,29 +199,14 @@ else
   COMPONENT_DISPLAY_NAME="$(basename "$PROJECT_DIR_ARG")"
 fi
 
-# ──── Path A (intake): derive the artifact paths from the issue number ────
-# Phase 0 (run_intake_phase, below) generates these before Phase 2 consumes them,
-# so the epic does not exist yet at startup — its existence check is deferred.
-if [[ -n "$ISSUE_NUMBER" ]]; then
-  EPIC_FILE="$REPO_ROOT/docs/epics/issue-${ISSUE_NUMBER}.md"
-  PRD_FILE="$REPO_ROOT/docs/prd/issue-${ISSUE_NUMBER}.md"
-  ARCH_FILE=""   # set by run_intake_phase only if the architecture step runs
-fi
-
 if [[ ! -f "$EPIC_FILE" ]]; then
   if [[ -f "$REPO_ROOT/$EPIC_FILE" ]]; then
     EPIC_FILE="$REPO_ROOT/$EPIC_FILE"
-  elif [[ -n "$ISSUE_NUMBER" ]]; then
-    :   # Path A: epic is generated by Phase 0 — defer the existence check.
   else
     echo -e "${RED}Error: Epic file not found: $EPIC_FILE${NC}"; exit 1
   fi
 fi
-# Canonicalize only when the file already exists (Path A's epic is created later;
-# its path is already absolute from the derivation above).
-if [[ -f "$EPIC_FILE" ]]; then
-  EPIC_FILE="$(cd "$(dirname "$EPIC_FILE")" && pwd)/$(basename "$EPIC_FILE")"
-fi
+EPIC_FILE="$(cd "$(dirname "$EPIC_FILE")" && pwd)/$(basename "$EPIC_FILE")"
 
 resolve_optional_doc() {
   local path="$1"
@@ -307,11 +225,8 @@ resolve_optional_doc() {
 PRD_FILE="$(resolve_optional_doc "$PRD_FILE")"
 ARCH_FILE="$(resolve_optional_doc "$ARCH_FILE")"
 
-# In Path A these are generated by Phase 0 and won't exist yet — skip the warning.
-if [[ -z "$ISSUE_NUMBER" ]]; then
-  [[ -n "$PRD_FILE"  && ! -f "$PRD_FILE"  ]] && echo -e "${YELLOW}Warning: PRD file not found at $PRD_FILE${NC}"
-  [[ -n "$ARCH_FILE" && ! -f "$ARCH_FILE" ]] && echo -e "${YELLOW}Warning: Architecture doc not found at $ARCH_FILE${NC}"
-fi
+[[ -n "$PRD_FILE"  && ! -f "$PRD_FILE"  ]] && echo -e "${YELLOW}Warning: PRD file not found at $PRD_FILE${NC}"
+[[ -n "$ARCH_FILE" && ! -f "$ARCH_FILE" ]] && echo -e "${YELLOW}Warning: Architecture doc not found at $ARCH_FILE${NC}"
 
 # Story specs, per-story progress, and review notes default to docs/stories/
 # (BMAD's implementation_artifacts location for this repo). System Track runs
@@ -338,53 +253,34 @@ if [[ ! -f "CLAUDE.md" && ! -f "$REPO_ROOT/CLAUDE.md" ]]; then
   echo -e "${YELLOW}Warning: no CLAUDE.md found — agents will rely on the PRD and epic for conventions${NC}"
 fi
 
-# ──── Story plan + tracking arrays (global scope) ────
-# These are declared global so finalize_story_plan() — and the rest of the run —
-# populate the SAME variables. Path B fills them immediately below; Path A fills
-# them after Phase 0 generates the epic (the epic does not exist at startup there).
-declare -a STORY_LIST=()
+# Expand `--stories all` into every story ID in the epic file, in file order.
+# Story headers look like `### Story 1.1: ...`.
+if [[ "$STORIES_ARG" == "all" ]]; then
+  STORIES_ARG="$(grep -oE '^### Story [0-9]+\.[0-9]+' "$EPIC_FILE" \
+    | grep -oE '[0-9]+\.[0-9]+' | paste -sd, -)"
+  [[ -z "$STORIES_ARG" ]] && {
+    echo -e "${RED}Error: --stories all found no '### Story X.Y' headers in $EPIC_FILE${NC}"; exit 1; }
+  echo -e "${CYAN}--stories all -> $STORIES_ARG${NC}"
+fi
+
+IFS=',' read -ra STORY_LIST <<< "$STORIES_ARG"
+TOTAL_STORIES=${#STORY_LIST[@]}
+EPIC_ID="${STORY_LIST[0]%%.*}"
+PROGRESS_FILE="$STORIES_DIR/ralph-sprint-progress-${EPIC_ID}.md"
+
+# ──── Tracking arrays ────
 declare -a STORY_STATUSES=()
 declare -a STORY_DURATIONS=()
 declare -a STORY_RETRIES=()
 declare -a STORY_NOTES=()
 declare -a STORY_COSTS=()
-TOTAL_STORIES=0
-EPIC_ID=""
-PROGRESS_FILE=""
-
-# finalize_story_plan: expand `--stories all` from the epic (story headers look
-# like `### Story 1.1: ...`) and (re)initialize the per-story tracking arrays.
-# Runs at global scope — it assigns the globals above with plain `=`/`+=`/`read`,
-# never `local`/`declare`, so they are not shadowed and stay visible to main().
-finalize_story_plan() {
-  if [[ "$STORIES_ARG" == "all" ]]; then
-    STORIES_ARG="$(grep -oE '^### Story [0-9]+\.[0-9]+' "$EPIC_FILE" \
-      | grep -oE '[0-9]+\.[0-9]+' | paste -sd, -)"
-    [[ -z "$STORIES_ARG" ]] && {
-      echo -e "${RED}Error: --stories all found no '### Story X.Y' headers in $EPIC_FILE${NC}"; exit 1; }
-    echo -e "${CYAN}--stories all -> $STORIES_ARG${NC}"
-  fi
-
-  IFS=',' read -ra STORY_LIST <<< "$STORIES_ARG"
-  TOTAL_STORIES=${#STORY_LIST[@]}
-  EPIC_ID="${STORY_LIST[0]%%.*}"
-  PROGRESS_FILE="$STORIES_DIR/ralph-sprint-progress-${EPIC_ID}.md"
-
-  STORY_STATUSES=(); STORY_DURATIONS=(); STORY_RETRIES=(); STORY_NOTES=(); STORY_COSTS=()
-  for ((i=0; i<TOTAL_STORIES; i++)); do
-    STORY_STATUSES+=("Pending")
-    STORY_DURATIONS+=("—")
-    STORY_RETRIES+=("—")
-    STORY_NOTES+=("—")
-    STORY_COSTS+=("0")
-  done
-}
-
-# Path B (no --issue): the epic exists now, so finalize immediately — same timing
-# as before the two-path split. Path A finalizes after Phase 0 builds the epic.
-if [[ -z "$ISSUE_NUMBER" ]]; then
-  finalize_story_plan
-fi
+for ((i=0; i<TOTAL_STORIES; i++)); do
+  STORY_STATUSES+=("Pending")
+  STORY_DURATIONS+=("—")
+  STORY_RETRIES+=("—")
+  STORY_NOTES+=("—")
+  STORY_COSTS+=("0")
+done
 
 ITERATION_COUNT=0
 STORIES_COMPLETED=0
@@ -433,20 +329,9 @@ AGENT_SM_FILE="$BMAD_ROOT/bmad-create-story/SKILL.md"
 AGENT_DEV_FILE="$BMAD_ROOT/bmad-dev-story/SKILL.md"
 AGENT_REVIEW_DIR="$BMAD_ROOT/bmad-code-review"
 
-# Path A (intake / Phase 0) planning roles. Same loader pattern as SM/Dev:
-#   PM        = bmad-create-prd               (issue -> PRD)
-#   Architect = bmad-create-architecture      (optional solution design)
-#   Planner   = bmad-create-epics-and-stories (PRD -> epic with story headers)
-AGENT_PM_FILE="$BMAD_ROOT/bmad-create-prd/SKILL.md"
-AGENT_ARCHITECT_FILE="$BMAD_ROOT/bmad-create-architecture/SKILL.md"
-AGENT_PLANNER_FILE="$BMAD_ROOT/bmad-create-epics-and-stories/SKILL.md"
-
 AGENT_SM_PERSONA=""
 AGENT_DEV_PERSONA=""
 AGENT_REVIEW_PERSONA=""
-AGENT_PM_PERSONA=""
-AGENT_ARCHITECT_PERSONA=""
-AGENT_PLANNER_PERSONA=""
 
 if [[ -f "$AGENT_SM_FILE" ]]; then
   AGENT_SM_PERSONA=$(cat "$AGENT_SM_FILE")
@@ -472,29 +357,6 @@ else
   log_warn "Review agent SKILL.md not found at $AGENT_REVIEW_DIR — using inline fallback"
 fi
 
-# Planning personas (Path A). Loaded the same way as SM/Dev — a missing SKILL.md
-# falls back to scripts/prompts/bmad-fallbacks/<role>.md inside load_prompt_layers.
-if [[ -f "$AGENT_PM_FILE" ]]; then
-  AGENT_PM_PERSONA=$(cat "$AGENT_PM_FILE")
-  log_info "Loaded PM agent persona from $AGENT_PM_FILE"
-else
-  log_warn "PM agent SKILL.md not found at $AGENT_PM_FILE — using inline fallback"
-fi
-
-if [[ -f "$AGENT_ARCHITECT_FILE" ]]; then
-  AGENT_ARCHITECT_PERSONA=$(cat "$AGENT_ARCHITECT_FILE")
-  log_info "Loaded Architect agent persona from $AGENT_ARCHITECT_FILE"
-else
-  log_warn "Architect agent SKILL.md not found at $AGENT_ARCHITECT_FILE — using inline fallback"
-fi
-
-if [[ -f "$AGENT_PLANNER_FILE" ]]; then
-  AGENT_PLANNER_PERSONA=$(cat "$AGENT_PLANNER_FILE")
-  log_info "Loaded Planner agent persona from $AGENT_PLANNER_FILE"
-else
-  log_warn "Planner agent SKILL.md not found at $AGENT_PLANNER_FILE — using inline fallback"
-fi
-
 # Assembles a three-layer system prompt for the given role (sm, dev, review).
 # Layer 1: execution-context override (stable, repo-local)
 # Layer 2: live BMAD persona or bmad-fallbacks/<role>.md if the persona is empty
@@ -513,13 +375,10 @@ load_prompt_layers() {
 
   # Layer 2: BMAD Persona (live from .claude/skills/, or fallback to repo-local)
   case "$role" in
-    sm)        layer2="$AGENT_SM_PERSONA" ;;
-    dev)       layer2="$AGENT_DEV_PERSONA" ;;
-    review)    layer2="$AGENT_REVIEW_PERSONA" ;;
-    pm)        layer2="$AGENT_PM_PERSONA" ;;
-    architect) layer2="$AGENT_ARCHITECT_PERSONA" ;;
-    planner)   layer2="$AGENT_PLANNER_PERSONA" ;;
-    *)         echo "ERROR: Unknown role '$role'. Expected one of: sm, dev, review, pm, architect, planner" >&2; return 1 ;;
+    sm)     layer2="$AGENT_SM_PERSONA" ;;
+    dev)    layer2="$AGENT_DEV_PERSONA" ;;
+    review) layer2="$AGENT_REVIEW_PERSONA" ;;
+    *)      echo "ERROR: Unknown role '$role'. Expected one of: sm, dev, review" >&2; return 1 ;;
   esac
 
   if [[ -z "$layer2" ]]; then
@@ -571,33 +430,16 @@ ${layer3}"
 SYSTEM_PROMPT_SM=""
 SYSTEM_PROMPT_DEV=""
 SYSTEM_PROMPT_REVIEW=""
-SYSTEM_PROMPT_PM=""
-SYSTEM_PROMPT_ARCHITECT=""
-SYSTEM_PROMPT_PLANNER=""
-SYSTEM_PROMPTS_BUILT=false
 
 build_system_prompts() {
-  # Idempotent: Path A pre-builds these before Phase 0; main() then calls again.
-  $SYSTEM_PROMPTS_BUILT && return 0
-
   SYSTEM_PROMPT_SM=$(load_prompt_layers "sm")
   SYSTEM_PROMPT_DEV=$(load_prompt_layers "dev")
   SYSTEM_PROMPT_REVIEW=$(load_prompt_layers "review")
-  # Planning roles (Path A). Built unconditionally so a single run is cheap and
-  # the prompts are byte-stable; only invoked when --issue selects Path A.
-  SYSTEM_PROMPT_PM=$(load_prompt_layers "pm")
-  SYSTEM_PROMPT_ARCHITECT=$(load_prompt_layers "architect")
-  SYSTEM_PROMPT_PLANNER=$(load_prompt_layers "planner")
 
-  log_info "System prompts built (SM/Dev/Review + PM/Architect/Planner cached via --append-system-prompt)"
-  log_dim "  SM prompt size:        $(echo -n "$SYSTEM_PROMPT_SM"        | wc -c) bytes"
-  log_dim "  Dev prompt size:       $(echo -n "$SYSTEM_PROMPT_DEV"       | wc -c) bytes"
-  log_dim "  Review prompt size:    $(echo -n "$SYSTEM_PROMPT_REVIEW"    | wc -c) bytes"
-  log_dim "  PM prompt size:        $(echo -n "$SYSTEM_PROMPT_PM"        | wc -c) bytes"
-  log_dim "  Architect prompt size: $(echo -n "$SYSTEM_PROMPT_ARCHITECT" | wc -c) bytes"
-  log_dim "  Planner prompt size:   $(echo -n "$SYSTEM_PROMPT_PLANNER"   | wc -c) bytes"
-
-  SYSTEM_PROMPTS_BUILT=true
+  log_info "System prompts built (SM/Dev/Review cached via --append-system-prompt)"
+  log_dim "  SM prompt size:     $(echo -n "$SYSTEM_PROMPT_SM"     | wc -c) bytes"
+  log_dim "  Dev prompt size:    $(echo -n "$SYSTEM_PROMPT_DEV"    | wc -c) bytes"
+  log_dim "  Review prompt size: $(echo -n "$SYSTEM_PROMPT_REVIEW" | wc -c) bytes"
 }
 
 # ──── Signal handling ────
@@ -736,21 +578,6 @@ update_progress_file() {
     echo "|------|-------------|---------|---------------|--------|-------|"
     echo "| $done_count | $inprog_count | $pending_count | $manual_count | $failed_count | $total_run |"
     echo ""
-    if [[ -n "$PHASE0_NOTE" ]]; then
-      echo "### Phase 0 — Planning (Path A intake)"
-      echo ""
-      echo "$PHASE0_NOTE"
-      if [[ -n "$ISSUE_NUMBER" ]]; then
-        echo ""
-        echo "| Artifact | Path |"
-        echo "|----------|------|"
-        echo "| Issue source | \`docs/prd/issue-${ISSUE_NUMBER}-source.md\` |"
-        echo "| PRD | \`$PRD_FILE\` |"
-        [[ -n "$ARCH_FILE" && -f "$ARCH_FILE" ]] && echo "| Architecture | \`$ARCH_FILE\` |"
-        echo "| Epic | \`$EPIC_FILE\` |"
-      fi
-      echo ""
-    fi
     echo "### Story Details"
     echo ""
     echo "| Story | Title | Status | Duration | Retries | Cost | Notes |"
@@ -1331,270 +1158,6 @@ verify_cascade() {
   fi
 
   return 0
-}
-
-# ════════════════════════════════════════════════════════════════
-# Phase 0 — Intake / Planning (Path A only)
-#
-# Fetches a single GitHub issue and runs a BMAD planning chain
-# (PRD -> optional architecture -> epic + stories) as fresh run_claude
-# invocations, using the same non-interactive discipline and cached,
-# byte-stable system prompts as Phase 2. The epic it writes uses the
-# exact `## Epic <N>:` / `### Story <N>.<k>:` headers that Phase 2's
-# `--stories all` grep and extract_story_* already parse, so the loop
-# continues into main() unchanged.
-#
-# State stays in git + on-disk artifacts: Phase 0 is skipped if its epic
-# already exists (resumability), and each step is skipped if its own
-# artifact exists. A planning failure PARKS (clear message + exit 2) — it
-# does not crash the run with a raw set -e abort.
-# ════════════════════════════════════════════════════════════════
-
-PHASE0_NOTE=""        # One-line Phase 0 summary rendered into the progress file.
-ISSUE_TITLE=""
-ISSUE_SOURCE_FILE=""
-IS_BUG=false
-
-# Park a Phase-0 failure: log clearly and exit 2 (same code main() uses for
-# Manual Review Required). Budgets/iteration caps and planning-agent failures
-# all funnel here so a Phase-0 problem surfaces for a human instead of crashing.
-phase0_park() {
-  local msg="$1"
-  log_error "[Phase 0] $msg"
-  log_error "[Phase 0] Parked for manual review — run with --plan-only to inspect, or fix and re-run (Phase 0 resumes if the epic exists)."
-  # The per-story progress file only exists once finalize_story_plan has run
-  # (after Phase 0). During Phase 0 there is no story table to write — the log is
-  # the record — so only refresh the progress file if it has been set up.
-  [[ -n "$PROGRESS_FILE" ]] && { update_progress_file 2>/dev/null || true; }
-  exit 2
-}
-
-# Guard the shared iteration cap before each planning invocation (budgets span
-# both phases). Per-invocation dollar caps are already enforced inside run_claude.
-phase0_iteration_guard() {
-  if [[ $ITERATION_COUNT -ge $MAX_ITERATIONS ]]; then
-    phase0_park "Max iterations ($MAX_ITERATIONS) reached during planning."
-  fi
-}
-
-run_pm_agent() {
-  local pf
-  pf=$(mktemp)
-
-  local depth_guidance
-  if $IS_BUG; then
-    depth_guidance="This issue is labelled a bug. Produce a CONCISE, problem-focused brief — problem statement, expected vs actual behaviour, a root-cause hypothesis if the issue suggests one, and acceptance criteria for the fix. Do not pad it into a full feature PRD."
-  else
-    depth_guidance="Produce a full PRD — goals, numbered functional requirements (FR-1, FR-2, …) that are observable from outside the code, and the non-functional constraints that matter."
-  fi
-
-  cat > "$pf" << RALPH_PROMPT
-Author a Product Requirements Document for GitHub issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
-
-Read the issue (title, labels, milestone, full body) at:
-- ${ISSUE_SOURCE_FILE}
-
-${depth_guidance}
-
-Write the PRD to: ${PRD_FILE}
-
-The PRD MUST:
-- State the problem/goal and the scope drawn from the issue.
-- Express requirements observable from outside the code (renders X, responds to Y, calls endpoint Z).
-- Include a "## Assumptions" section recording every detail you inferred rather than read directly from the issue.
-- Stay within the project's stack rules (already in your system prompt).
-
-Operate autonomously: do not ask questions, do not start an elicitation workshop — infer and commit.
-RALPH_PROMPT
-
-  run_claude "$pf" "[issue ${ISSUE_NUMBER}] PM Agent" "$MODEL_PM" "$MAX_TURNS_PM" "$SYSTEM_PROMPT_PM" ""
-}
-
-run_architecture_agent() {
-  local pf
-  pf=$(mktemp)
-
-  cat > "$pf" << RALPH_PROMPT
-Author a focused solution-design / architecture note for GitHub issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
-
-Read:
-- ${PRD_FILE} (the PRD produced for this issue)
-- ${ISSUE_SOURCE_FILE} (the original issue)
-
-Write the architecture note to: ${ARCH_FILE}
-
-Cover only what the build needs: the components touched, the data/control flow, the key technical choices and their rationale, and the cross-cutting concerns (error handling, persistence, accessibility) the build must honour. Include a "## Assumptions" section. Stay within the stack rules in your system prompt.
-
-Do NOT break the work into stories — that is the planner's job. Operate autonomously: infer and commit, do not ask questions.
-RALPH_PROMPT
-
-  run_claude "$pf" "[issue ${ISSUE_NUMBER}] Architect Agent" "$MODEL_ARCHITECT" "$MAX_TURNS_ARCHITECT" "$SYSTEM_PROMPT_ARCHITECT" ""
-}
-
-run_planner_agent() {
-  local pf arch_read_line=""
-  pf=$(mktemp)
-  if [[ -n "$ARCH_FILE" && -f "$ARCH_FILE" ]]; then
-    arch_read_line="- ${ARCH_FILE} (the architecture / solution-design note)"
-  fi
-
-  cat > "$pf" << RALPH_PROMPT
-Break the PRD for GitHub issue #${ISSUE_NUMBER} into ONE epic with small, incremental stories.
-
-Read:
-- ${PRD_FILE} (the PRD)
-${arch_read_line}
-
-Write the epic to: ${EPIC_FILE}
-
-CRITICAL output format — parsed by shell tooling, so follow it EXACTLY:
-- Exactly one epic header line: "## Epic ${ISSUE_NUMBER}: <Epic Title>"
-- Each story header EXACTLY: "### Story ${ISSUE_NUMBER}.<k>: <Story Title>", with <k> = 1, 2, 3, …
-  Examples: "### Story ${ISSUE_NUMBER}.1: ...", then "### Story ${ISSUE_NUMBER}.2: ...".
-- A colon and a single space after the ID; a title on the same line.
-- Inside a story's body do NOT use a "## " heading and do NOT put a lone "---" line — either one truncates the story when it is sliced out later. Use bold labels or "####" sub-headings. End the story list with a "## Notes" section or a final "---" line.
-
-For each story: the header, a short description, and an "Acceptance Criteria" list observable from outside the code. Keep stories small and incremental — each independently demonstrable, each leaving the checkpoint green — and ordered so later stories build on earlier ones.
-
-STOP at the epic. Do NOT write any per-story spec files under docs/stories/ — the build loop's Scrum Master step produces those later. Operate autonomously: infer and commit, do not ask questions.
-RALPH_PROMPT
-
-  run_claude "$pf" "[issue ${ISSUE_NUMBER}] Planner Agent" "$MODEL_PLANNER" "$MAX_TURNS_PLANNER" "$SYSTEM_PROMPT_PLANNER" ""
-}
-
-# Decide whether the optional architecture step runs. Deterministic given the
-# issue (no hidden state): see --architecture auto|always|never.
-intake_needs_architecture() {
-  case "$ARCHITECTURE_MODE" in
-    always) return 0 ;;
-    never)  return 1 ;;
-    auto)
-      $IS_BUG && return 1
-      # A design/arch/rfc label, or a long body, implies real design decisions.
-      if printf '%s' "$1" | jq -e '[.labels[].name | ascii_downcase] | any(test("arch|design|rfc"))' >/dev/null 2>&1; then
-        return 0
-      fi
-      local body_len
-      body_len=$(printf '%s' "$1" | jq -r '.body // "" | length' 2>/dev/null || echo 0)
-      [[ "$body_len" =~ ^[0-9]+$ ]] || body_len=0
-      [[ $body_len -gt 1200 ]] && return 0
-      return 1 ;;
-    *) return 1 ;;
-  esac
-}
-
-run_intake_phase() {
-  # ── Pre-flight: gh available, authenticated, repo resolvable ──
-  command -v gh >/dev/null 2>&1 || {
-    log_error "Path A (--issue) requires the GitHub CLI 'gh' on PATH. Install: https://cli.github.com/"; exit 1; }
-  if ! gh auth status >/dev/null 2>&1; then
-    log_error "Path A: 'gh' is not authenticated. Run: gh auth login"; exit 1
-  fi
-
-  local slug="$REPO_SLUG"
-  if [[ -z "$slug" ]]; then
-    slug=$(cd "$REPO_ROOT" && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) || true
-  fi
-  [[ -z "$slug" ]] && {
-    log_error "Path A: could not determine the GitHub repo. Pass --repo OWNER/NAME (or set a default with: gh repo set-default)."; exit 1; }
-  log_info "[Phase 0] Intake for issue #${ISSUE_NUMBER} in ${slug}"
-
-  ISSUE_SOURCE_FILE="$REPO_ROOT/docs/prd/issue-${ISSUE_NUMBER}-source.md"
-  local arch_path="$REPO_ROOT/docs/architecture/issue-${ISSUE_NUMBER}.md"
-
-  # ── Resumability fast-path: epic already exists → Phase 0 is done ──
-  if [[ -f "$EPIC_FILE" ]]; then
-    [[ -f "$arch_path" ]] && ARCH_FILE="$arch_path"
-    local n_existing
-    # `grep -c` prints the count AND exits 1 on zero matches, so put the fallback
-    # on the assignment (not inside $()) to avoid a "0\n0" value.
-    n_existing=$(grep -cE '^### Story [0-9]+\.[0-9]+:' "$EPIC_FILE" 2>/dev/null) || n_existing=0
-    PHASE0_NOTE="Resumed: epic issue-${ISSUE_NUMBER}.md already present (${n_existing} stories) — skipped planning."
-    log_info "[Phase 0] Epic already exists at $EPIC_FILE — skipping planning, resuming into Phase 2."
-    return 0
-  fi
-
-  # ── Fetch the issue ──
-  local issue_json
-  issue_json=$(cd "$REPO_ROOT" && gh issue view "$ISSUE_NUMBER" --repo "$slug" \
-    --json number,title,body,labels,milestone 2>/dev/null) || {
-      log_error "Path A: could not fetch issue #${ISSUE_NUMBER} from ${slug}. Does it exist and is it accessible to your gh account?"; exit 1; }
-
-  ISSUE_TITLE=$(printf '%s' "$issue_json" | jq -r '.title // ""')
-  local body labels milestone
-  body=$(printf '%s' "$issue_json" | jq -r '.body // ""')
-  labels=$(printf '%s' "$issue_json" | jq -r '[.labels[].name] | join(", ")')
-  milestone=$(printf '%s' "$issue_json" | jq -r '.milestone.title // ""')
-
-  IS_BUG=false
-  if printf '%s' "$issue_json" | jq -e '[.labels[].name | ascii_downcase] | any(. == "bug" or test("(^|[: ])bug$"))' >/dev/null 2>&1; then
-    IS_BUG=true
-  fi
-
-  # ── Persist a source snapshot the planning agents (and humans) can re-read ──
-  mkdir -p "$REPO_ROOT/docs/prd" "$REPO_ROOT/docs/epics"
-  {
-    printf '# Issue #%s: %s\n\n' "$ISSUE_NUMBER" "$ISSUE_TITLE"
-    printf -- '- Repo: %s\n' "$slug"
-    printf -- '- Labels: %s\n' "${labels:-none}"
-    printf -- '- Milestone: %s\n' "${milestone:-none}"
-    printf '\n## Body\n\n%s\n' "$body"
-  } > "$ISSUE_SOURCE_FILE"
-  log_info "[Phase 0] Wrote issue snapshot to $ISSUE_SOURCE_FILE (bug=${IS_BUG})"
-
-  # ── Step 1: PRD ──
-  if [[ -f "$PRD_FILE" ]]; then
-    log_info "[Phase 0] PRD already exists — skipping PM agent"
-  else
-    phase0_iteration_guard
-    log_info "[Phase 0] PM agent writing PRD (model=${MODEL_PM})..."
-    run_pm_agent || phase0_park "PM agent failed (terminal_reason=${RALPH_LAST_TERMINAL_REASON:-unknown})."
-    [[ -f "$PRD_FILE" ]] || phase0_park "PM agent finished but no PRD was written at $PRD_FILE."
-    log_success "[Phase 0] PRD written: $PRD_FILE"
-  fi
-
-  # ── Step 2: Architecture (optional) ──
-  ARCH_FILE=""
-  if [[ -f "$arch_path" ]]; then
-    ARCH_FILE="$arch_path"
-    log_info "[Phase 0] Architecture note already exists — skipping Architect agent"
-  elif intake_needs_architecture "$issue_json"; then
-    mkdir -p "$REPO_ROOT/docs/architecture"
-    ARCH_FILE="$arch_path"
-    phase0_iteration_guard
-    log_info "[Phase 0] Architect agent writing solution design (model=${MODEL_ARCHITECT})..."
-    run_architecture_agent || phase0_park "Architect agent failed (terminal_reason=${RALPH_LAST_TERMINAL_REASON:-unknown})."
-    if [[ ! -f "$ARCH_FILE" ]]; then
-      log_warn "[Phase 0] Architect agent produced no file — continuing without an architecture note."
-      ARCH_FILE=""
-    else
-      log_success "[Phase 0] Architecture note written: $ARCH_FILE"
-    fi
-  else
-    log_info "[Phase 0] Architecture step skipped (mode=${ARCHITECTURE_MODE}; issue does not imply design decisions)."
-  fi
-
-  # ── Step 3: Epic + stories ──
-  phase0_iteration_guard
-  log_info "[Phase 0] Planner agent writing epic + stories (model=${MODEL_PLANNER})..."
-  run_planner_agent || phase0_park "Planner agent failed (terminal_reason=${RALPH_LAST_TERMINAL_REASON:-unknown})."
-  [[ -f "$EPIC_FILE" ]] || phase0_park "Planner agent finished but no epic was written at $EPIC_FILE."
-
-  # ── Validate the load-bearing output contract before handing off to Phase 2 ──
-  local n_stories
-  n_stories=$(grep -cE "^### Story ${ISSUE_NUMBER}\.[0-9]+:" "$EPIC_FILE" 2>/dev/null) || n_stories=0
-  [[ "$n_stories" =~ ^[0-9]+$ ]] || n_stories=0
-  if [[ $n_stories -lt 1 ]]; then
-    phase0_park "Epic at $EPIC_FILE has no valid '### Story ${ISSUE_NUMBER}.<k>:' headers — Phase 2 cannot consume it."
-  fi
-  if ! grep -qE "^## Epic ${ISSUE_NUMBER}:" "$EPIC_FILE" 2>/dev/null; then
-    log_warn "[Phase 0] Epic is missing a '## Epic ${ISSUE_NUMBER}:' header — progress will show a generic title."
-  fi
-
-  local arch_note="no architecture"
-  [[ -n "$ARCH_FILE" && -f "$ARCH_FILE" ]] && arch_note="architecture"
-  PHASE0_NOTE="Issue #${ISSUE_NUMBER} → PRD + ${arch_note} + epic (${n_stories} stories)."
-  log_success "[Phase 0] Planning complete: ${n_stories} stories in $EPIC_FILE"
 }
 
 # ════════════════════════════════════════════════════════════════
@@ -2211,12 +1774,7 @@ if $DRY_RUN_PROMPTS; then
     exit 1
   fi
   _dryrun_failed=0
-  # Path B prints sm/dev/review (unchanged). Path A (--issue) also prints the
-  # planning roles so their resolved prompts can be smoke-checked without running
-  # Phase 0 (this block exits before the Phase 0 gate below).
-  _dryrun_roles=(sm dev review)
-  [[ -n "$ISSUE_NUMBER" ]] && _dryrun_roles+=(pm architect planner)
-  for _dryrun_role in "${_dryrun_roles[@]}"; do
+  for _dryrun_role in sm dev review; do
     echo "=== $(echo "$_dryrun_role" | tr '[:lower:]' '[:upper:]') ==="
     _dryrun_prompt=""
     _dryrun_rc=0
@@ -2231,26 +1789,6 @@ if $DRY_RUN_PROMPTS; then
   done
   [[ $_dryrun_failed -eq 0 ]] || exit 1
   exit 0
-fi
-
-# ──── Phase 0 (Plan) gate — Path A only ────
-# Runs before main() so the existing loop is reached unchanged. Building the
-# system prompts here (idempotent) makes SYSTEM_PROMPT_PM/ARCHITECT/PLANNER
-# available to the planning agents; main() will no-op its own build call.
-if [[ -n "$ISSUE_NUMBER" ]]; then
-  build_system_prompts
-  run_intake_phase          # fetch issue → PRD → (architecture) → epic; sets EPIC_FILE/PRD_FILE/ARCH_FILE
-  finalize_story_plan       # now the epic exists → expand stories + init tracking arrays
-
-  if $PLAN_ONLY; then
-    log_success "[Phase 0] --plan-only: planning complete, stopping before any code changes."
-    log_plain "  Issue:   #${ISSUE_NUMBER}"
-    log_plain "  PRD:     $PRD_FILE"
-    [[ -n "$ARCH_FILE" && -f "$ARCH_FILE" ]] && log_plain "  Arch:    $ARCH_FILE"
-    log_plain "  Epic:    $EPIC_FILE"
-    log_plain "  Stories: $STORIES_ARG"
-    exit 0
-  fi
 fi
 
 main

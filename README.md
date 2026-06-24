@@ -79,6 +79,35 @@ These flags are the script's built-in defaults, so a bare `./scripts/ralph-loop.
 
 The script runs one story at a time: SM → Dev → Review → (Fix loop) → commit. Stop it anytime with `Ctrl-C`; resume by re-running with the same arguments.
 
+### Two execution paths
+
+The loop has two paths, selected by whether you pass `--issue`:
+
+- **Path B — execute (default).** Build from an epic that already exists — the
+  command above. This is what the demo runs.
+- **Path A — intake (`--issue N`).** Start from a single GitHub issue. A planning
+  phase (**Phase 0**) turns the issue into a PRD (`docs/prd/issue-N.md`), an
+  optional architecture note (`docs/architecture/issue-N.md`), and an epic
+  (`docs/epics/issue-N.md`, with stories namespaced `N.1`, `N.2`, …), then runs
+  the Path B loop on it. Requires the [`gh`](https://cli.github.com/) CLI,
+  authenticated.
+
+```bash
+# Path A — plan AND build from issue 42:
+./scripts/ralph-loop.sh --issue 42 --repo owner/name \
+  --checkpoint "cd src && npm run build && npm test --if-present"
+
+# Path A — plan only, stop before any code (review the PRD/epic first):
+./scripts/ralph-loop.sh --issue 42 --plan-only
+```
+
+`--issue` and `--epic` are mutually exclusive (Path A derives the epic from the
+issue). Phase 0 is skipped on re-run if its epic already exists, so an
+interrupted intake resumes straight into the build. Planning models default to
+opus (PRD/architecture) and sonnet (story breakdown); override with `--model-pm`,
+`--model-architect`, `--model-planner`. The architecture step is gated by
+`--architecture auto|always|never` (default `auto`).
+
 ### Useful flags
 
 | Flag | Purpose |
@@ -86,6 +115,9 @@ The script runs one story at a time: SM → Dev → Review → (Fix loop) → co
 | `--stories 1,2,3` | Run a subset of stories instead of all |
 | `--max-budget-usd 5` | Hard cap per Claude invocation |
 | `--tag <name>` | Tag log files for this run |
+| `--issue N` | Path A: plan from GitHub issue N, then build |
+| `--repo OWNER/NAME` | Repo to read the issue from (default: `gh repo view`) |
+| `--plan-only` | Path A: run planning then stop (no code changes) |
 
 See `./scripts/ralph-loop.sh --help` for the full list.
 

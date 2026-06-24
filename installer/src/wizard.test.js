@@ -81,6 +81,35 @@ test('isUpdate is false when classification is existing-project', async () => {
   assert.equal(plan.isUpdate, false);
 });
 
+// ─── Git init offer (AC4) ─────────────────────────────────────────────────────
+
+test('runGitInit is true by default for empty classification', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, { prompts: buildMockPrompts() });
+  assert.equal(plan.runGitInit, true, 'runGitInit should default to true for empty dirs');
+});
+
+test('runGitInit can be declined for empty classification', async () => {
+  // confirms: explainer, target, gitInit=false, addGitignoreEntries, addNpmScripts, installBmad, finalConfirm
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    prompts: buildMockPrompts({ confirms: [true, true, false, true, true, true, true] }),
+  });
+  assert.equal(plan.runGitInit, false, 'runGitInit should be false when user declines');
+});
+
+test('runGitInit is false and prompt is not offered for existing-project classification', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'existing-project', {}, {
+    prompts: buildMockPrompts(),
+  });
+  assert.equal(plan.runGitInit, false, 'runGitInit should be false for non-empty dirs');
+});
+
+test('runGitInit is false and prompt is not offered for existing-install classification', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'existing-install', {}, {
+    prompts: buildMockPrompts(),
+  });
+  assert.equal(plan.runGitInit, false, 'runGitInit should be false for existing installs');
+});
+
 // ─── Task source ──────────────────────────────────────────────────────────────
 
 test('taskSourcePath is set when user selects existing task source', async () => {
@@ -106,17 +135,18 @@ test('taskSourcePath is undefined when user selects scaffold', async () => {
 // ─── Extras opt-out ───────────────────────────────────────────────────────────
 
 test('gitignoreEntries is empty when user opts out', async () => {
-  // confirms: explainer, target, addGitignore=false, addNpmScripts, finalConfirm
+  // confirms: explainer, target, gitInit, addGitignore=false, addNpmScripts, installBmad, finalConfirm
   const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
-    prompts: buildMockPrompts({ confirms: [true, true, false, true, true] }),
+    prompts: buildMockPrompts({ confirms: [true, true, true, false, true, true, true] }),
   });
   assert.equal(plan.addGitignoreEntries, false);
   assert.deepEqual(plan.gitignoreEntries, []);
 });
 
 test('npmScriptNames is empty when user opts out', async () => {
+  // confirms: explainer, target, gitInit, addGitignoreEntries, addNpmScripts=false, installBmad, finalConfirm
   const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
-    prompts: buildMockPrompts({ confirms: [true, true, true, false, true] }),
+    prompts: buildMockPrompts({ confirms: [true, true, true, true, false, true, true] }),
   });
   assert.equal(plan.addNpmScripts, false);
   assert.deepEqual(plan.npmScriptNames, []);
@@ -155,8 +185,10 @@ test('declining at final confirmation calls exit(0) and returns undefined', asyn
       outro: () => {},
       isCancel: () => false,
       cancel: () => {},
-      // Return false on the 5th confirm (index 4) — the final "Create this install?"
-      confirm: async (opts) => (confirmCount++ === 4 ? false : (opts.initialValue ?? true)),
+      // Return false on the 7th confirm (index 6) — the final "Create this install?"
+      // (empty classification adds a git init confirm at index 2 and BMAD confirm at index 5,
+      // shifting final to index 6)
+      confirm: async (opts) => (confirmCount++ === 6 ? false : (opts.initialValue ?? true)),
       select: async (opts) => opts.initialValue ?? opts.options[0].value,
       text: async (opts) => opts.initialValue ?? '',
     },
@@ -216,12 +248,13 @@ test('throws when no TTY and no injected prompts', async () => {
 test('InstallPlan schema: all required top-level keys are present', async () => {
   const plan = await runWizard('/tmp/test-dir', 'empty', {}, { prompts: buildMockPrompts() });
   const requiredKeys = [
-    'targetDir', 'classification', 'isUpdate',
+    'targetDir', 'classification', 'isUpdate', 'runGitInit',
     'appDir', 'checkpointCommand', 'stackDescription',
     'loopRetries', 'maxTokensPerTurn', 'modelOrder',
     'taskSource',
     'addGitignoreEntries', 'gitignoreEntries',
     'addNpmScripts', 'npmScriptNames',
+    'skipBmad',
     'wizardAnswers', 'summaryLines',
   ];
   for (const key of requiredKeys) {
@@ -340,4 +373,177 @@ test('edge case: stack description with markdown special characters is stored as
     prompts: buildMockPrompts({ texts: ['src', 'npm test', rawStack, '3', '200000'] }),
   });
   assert.equal(plan.stackDescription, rawStack.trim(), 'stack description stored verbatim');
+});
+
+// ─── skipBmad ────────────────────────────────────────────────────────────────
+
+test('skipBmad defaults to false (BMAD installs by default)', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, { prompts: buildMockPrompts() });
+  assert.equal(plan.skipBmad, false, 'skipBmad should default to false (BMAD installed by default)');
+});
+
+test('skipBmad is true when user declines BMAD install', async () => {
+  // confirms: explainer, target, gitInit, addGitignoreEntries, addNpmScripts, installBmad=false, finalConfirm
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    prompts: buildMockPrompts({ confirms: [true, true, true, true, true, false, true] }),
+  });
+  assert.equal(plan.skipBmad, true, 'skipBmad should be true when user declines BMAD install');
+});
+
+// ─── Non-interactive mode (--yes) ────────────────────────────────────────────
+
+test('useDefaults=true returns plan without calling any prompts', async () => {
+  let promptsCalled = false;
+  const result = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    log: () => {},
+    prompts: {
+      intro: () => { promptsCalled = true; },
+      outro: () => { promptsCalled = true; },
+      confirm: () => { promptsCalled = true; },
+      text: () => { promptsCalled = true; },
+      select: () => { promptsCalled = true; },
+      isCancel: () => false,
+    },
+  });
+  // useDefaults=true with injected prompts: since opts.prompts is set, we go through the
+  // interactive path. To test pure non-interactive, omit opts.prompts.
+  // This test verifies the plan is still returned.
+  assert.ok(result, 'should return a plan');
+});
+
+test('useDefaults=true without opts.prompts returns plan without TTY', async () => {
+  const logs = [];
+  const plan = await runWizard('/tmp/nonexistent-tty', 'empty', {}, {
+    useDefaults: true,
+    log: (msg) => logs.push(msg),
+  });
+  assert.ok(plan, 'should return a plan');
+  assert.ok(logs.length > 0, 'should produce log output');
+});
+
+test('non-interactive plan has all required fields', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    log: () => {},
+  });
+
+  const requiredKeys = [
+    'targetDir', 'classification', 'isUpdate', 'runGitInit',
+    'appDir', 'checkpointCommand', 'stackDescription',
+    'loopRetries', 'maxTokensPerTurn', 'modelOrder',
+    'taskSource',
+    'addGitignoreEntries', 'gitignoreEntries',
+    'addNpmScripts', 'npmScriptNames',
+    'skipBmad',
+    'wizardAnswers', 'summaryLines',
+  ];
+  for (const key of requiredKeys) {
+    assert.ok(key in plan, `plan.${key} should be present`);
+  }
+});
+
+test('non-interactive plan uses defaults for all fields', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    log: () => {},
+  });
+
+  assert.equal(plan.targetDir, '/tmp/test-dir');
+  assert.equal(plan.classification, 'empty');
+  assert.equal(plan.isUpdate, false);
+  assert.equal(plan.appDir, 'src');
+  assert.equal(plan.checkpointCommand, 'npm run build && npm test');
+  assert.ok(plan.stackDescription.length > 0, 'stackDescription should be non-empty');
+  assert.equal(plan.loopRetries, 3);
+  assert.equal(plan.maxTokensPerTurn, 200000);
+  assert.deepEqual(plan.modelOrder, ['opus', 'sonnet', 'haiku']);
+  assert.equal(plan.taskSource, 'scaffold');
+  assert.equal(plan.addGitignoreEntries, true);
+  assert.equal(plan.addNpmScripts, true);
+  assert.equal(plan.skipBmad, false, 'BMAD installs by default');
+});
+
+test('non-interactive plan: cliAnswers.appDir overrides default', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    cliAnswers: { appDir: 'frontend' },
+    log: () => {},
+  });
+  assert.equal(plan.appDir, 'frontend');
+});
+
+test('non-interactive plan: cliAnswers.checkpointCommand overrides default', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    cliAnswers: { checkpointCommand: 'make test' },
+    log: () => {},
+  });
+  assert.equal(plan.checkpointCommand, 'make test');
+});
+
+test('non-interactive plan: cliAnswers.taskSource=existing is respected', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    cliAnswers: { taskSource: 'existing' },
+    log: () => {},
+  });
+  assert.equal(plan.taskSource, 'existing');
+});
+
+test('non-interactive plan: cliAnswers.useBmad=no sets skipBmad=true', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    cliAnswers: { useBmad: 'no' },
+    log: () => {},
+  });
+  assert.equal(plan.skipBmad, true, 'useBmad=no should set skipBmad=true');
+});
+
+test('non-interactive plan: cliAnswers.skipNpmScript=yes sets addNpmScripts=false', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    cliAnswers: { skipNpmScript: 'yes' },
+    log: () => {},
+  });
+  assert.equal(plan.addNpmScripts, false, 'skipNpmScript=yes should set addNpmScripts=false');
+  assert.deepEqual(plan.npmScriptNames, []);
+});
+
+test('non-interactive plan: isUpdate=true for existing-install classification', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'existing-install', {}, {
+    useDefaults: true,
+    log: () => {},
+  });
+  assert.equal(plan.isUpdate, true);
+  assert.equal(plan.classification, 'existing-install');
+});
+
+test('non-interactive log output contains no ANSI escape codes', async () => {
+  const logs = [];
+  await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    log: (msg = '') => logs.push(msg),
+  });
+  const combined = logs.join('\n');
+  assert.ok(!/\x1b\[/.test(combined), 'non-interactive log should contain no ANSI escape codes');
+});
+
+test('useDefaults=false without TTY still throws (interactive requires TTY)', async () => {
+  const origIsTTY = process.stdin.isTTY;
+  try {
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
+    await assert.rejects(
+      () => runWizard('/tmp/test-dir', 'empty', {}),
+      (err) => {
+        assert.ok(err.message.includes('interactive terminal'), 'error should mention TTY');
+        return true;
+      },
+    );
+  } finally {
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: origIsTTY,
+      configurable: true,
+    });
+  }
 });

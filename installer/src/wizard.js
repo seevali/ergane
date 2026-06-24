@@ -1,5 +1,6 @@
 import { intro, outro, text, confirm, select, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
+import { isColorEnabled } from './colors.js';
 
 // Sentinel thrown internally when the user cancels or declines.
 // The outer try-catch converts it to a clean undefined return.
@@ -45,6 +46,83 @@ export const validators = {
   },
 };
 
+// ── Non-interactive plan builder ──────────────────────────────────────────────
+
+/**
+ * Build an InstallPlan from defaults and CLI-provided answers, without any prompts.
+ * Called when --yes is set. Prints plain text progress (no ANSI codes).
+ *
+ * @param {string} targetDir
+ * @param {'empty'|'existing-project'|'existing-install'} classification
+ * @param {object} cliAnswers - from parseCliArgs()
+ * @param {Function} [log] - injectable console.log
+ * @returns {object} InstallPlan
+ */
+function buildNonInteractivePlan(targetDir, classification, cliAnswers, log = console.log) {
+  const appDir = (cliAnswers.appDir ?? 'src').trim();
+  const checkpointCommand = (
+    cliAnswers.checkpointCommand ?? 'npm run build && npm test'
+  ).trim();
+  const stackDescription = (
+    cliAnswers.stackDescription ??
+    'React 19 + Vite + TypeScript (strict mode)\nCSS Modules for styling\nVitest + React Testing Library for tests\nFetch API for HTTP'
+  ).trim();
+  const taskSource = cliAnswers.taskSource ?? 'scaffold';
+  const addNpmScripts = cliAnswers.skipNpmScript !== 'yes';
+  const skipBmad = cliAnswers.useBmad === 'no';
+
+  const gitignoreEntries = ['_bmad/', '.claude/skills/', 'scripts/logs/'];
+  const npmScriptNames = addNpmScripts ? ['dev-story', 'code-review'] : [];
+
+  const summaryLines = [
+    `Target directory: ${targetDir}`,
+    `App directory: ${appDir}`,
+    `Checkpoint command: ${checkpointCommand}`,
+    `Stack: ${stackDescription.split('\n')[0]}...`,
+    `Task source: ${taskSource}`,
+    'Loop retries: 3',
+    'Max tokens: 200000',
+    'Will add .gitignore entries',
+    addNpmScripts ? 'Will add npm scripts' : 'No npm script changes',
+    skipBmad ? 'Skipping BMAD install' : 'Will install BMAD modules (core, bmm)',
+  ];
+
+  log('[non-interactive] Installing with defaults...');
+  summaryLines.forEach((line) => log(`  ${line}`));
+
+  return {
+    targetDir,
+    classification,
+    isUpdate: classification === 'existing-install',
+    runGitInit: false,
+
+    appDir,
+    checkpointCommand,
+    stackDescription,
+
+    loopRetries: 3,
+    maxTokensPerTurn: 200000,
+    modelOrder: ['opus', 'sonnet', 'haiku'],
+
+    taskSource,
+    taskSourcePath: undefined,
+
+    addGitignoreEntries: true,
+    gitignoreEntries,
+    addNpmScripts,
+    npmScriptNames,
+    skipBmad,
+
+    wizardAnswers: {
+      explainerConfirmed: true,
+      stackConfirmed: true,
+      loopKnobsConfirmed: true,
+    },
+
+    summaryLines,
+  };
+}
+
 function makeCancelChecker(p, exit) {
   return function checkCancel(value) {
     if (p.isCancel(value)) {
@@ -63,24 +141,42 @@ function decline(p, exit) {
 }
 
 /**
- * Run the interactive wizard to collect install configuration.
+ * Run the wizard to collect install configuration.
+ *
+ * Supports two modes:
+ * - Interactive (default): prompts the user via @clack/prompts; requires a TTY stdin.
+ * - Non-interactive (opts.useDefaults=true): skips all prompts, uses defaults + cliAnswers;
+ *   safe to use in CI/CD pipelines and piped contexts.
  *
  * @param {string} targetDir - absolute path to the target directory
  * @param {'empty'|'existing-project'|'existing-install'} classification - from Story 2.1
  * @param {object} preflightResults - from Story 1.4's preflight()
  * @param {object} [opts]
- * @param {object}   [opts.prompts] - injectable prompt functions (for testing)
- * @param {Function} [opts.exit]    - injectable process.exit (for testing)
+ * @param {boolean}  [opts.useDefaults]  - skip all prompts and use defaults (--yes)
+ * @param {object}   [opts.cliAnswers]   - per-question flag values from parseCliArgs()
+ * @param {object}   [opts.prompts]      - injectable prompt functions (for testing)
+ * @param {Function} [opts.exit]         - injectable process.exit (for testing)
+ * @param {Function} [opts.log]          - injectable console.log (for testing)
  * @returns {Promise<object|undefined>} InstallPlan, or undefined if user cancelled
  */
 export async function runWizard(targetDir, classification, preflightResults, opts = {}) {
-  // @clack/prompts requires a real TTY. Story 3.1 adds --yes for non-interactive mode.
+  const useDefaults = opts.useDefaults ?? false;
+  const cliAnswers = opts.cliAnswers ?? {};
+  const log = opts.log ?? console.log;
+
+  // Non-interactive path: bypass all prompts, use defaults + cliAnswers
+  if (useDefaults && !opts.prompts) {
+    return buildNonInteractivePlan(targetDir, classification, cliAnswers, log);
+  }
+
+  // Interactive path requires a real TTY for user input
   if (!opts.prompts && !process.stdin.isTTY) {
     throw new Error(
-      'Wizard requires an interactive terminal. Use --yes for non-interactive mode (Story 3.1).',
+      'Wizard requires an interactive terminal. Use --yes for non-interactive mode.',
     );
   }
 
+  const colorOpts = { isTTY: process.stdout.isTTY === true };
   const p = opts.prompts ?? { intro, outro, text, confirm, select, isCancel };
   const exit = opts.exit ?? process.exit;
   const checkCancel = makeCancelChecker(p, exit);
@@ -105,7 +201,7 @@ export async function runWizard(targetDir, classification, preflightResults, opt
     // ── Step 3: Target directory confirmation ─────────────────────────────────
     const targetMessage =
       classification === 'empty'
-        ? "This directory is empty. I can initialize git and create a skeleton."
+        ? "This directory is empty. I'll set up the Ralph Loop here."
         : classification === 'existing-project'
           ? "This is an existing project. I'll add Ralph Loop files without touching your code."
           : "This directory already has a Ralph Loop install. I'll update it.";
@@ -117,6 +213,17 @@ export async function runWizard(targetDir, classification, preflightResults, opt
       }),
     );
     if (!targetConfirmed) decline(p, exit);
+
+    // ── Step 3b: Git init offer (empty directories only) ──────────────────────
+    let runGitInit = false;
+    if (classification === 'empty') {
+      runGitInit = checkCancel(
+        await p.confirm({
+          message: 'This directory is empty. Initialize a git repository as part of the install?',
+          initialValue: true,
+        }),
+      );
+    }
 
     // ── Step 4a: App directory ────────────────────────────────────────────────
     const appDirRaw = checkCancel(
@@ -211,6 +318,15 @@ export async function runWizard(targetDir, classification, preflightResults, opt
       }),
     );
 
+    const installBmadStep = checkCancel(
+      await p.confirm({
+        message:
+          'Install BMAD method modules (core, bmm) into docs/ as part of setup?\n' +
+          '  Runs: npx bmad-method install --modules core,bmm --tools claude-code --output-folder docs',
+        initialValue: true,
+      }),
+    );
+
     const gitignoreEntries = addGitignoreEntries
       ? ['_bmad/', '.claude/skills/', 'scripts/logs/']
       : [];
@@ -228,9 +344,10 @@ export async function runWizard(targetDir, classification, preflightResults, opt
       `Max tokens: ${maxTokensPerTurnRaw.trim()}`,
       addGitignoreEntries ? 'Will add .gitignore entries' : 'No .gitignore changes',
       addNpmScripts ? 'Will add npm scripts' : 'No npm script changes',
+      installBmadStep ? 'Will install BMAD modules (core, bmm)' : 'Skipping BMAD install',
     ];
 
-    console.log('\n' + pc.gray('Plan summary:'));
+    console.log('\n' + (isColorEnabled(colorOpts) ? pc.gray('Plan summary:') : 'Plan summary:'));
     summaryLines.forEach((line) => console.log('  ' + line));
 
     const finalConfirm = checkCancel(
@@ -246,6 +363,7 @@ export async function runWizard(targetDir, classification, preflightResults, opt
       targetDir,
       classification,
       isUpdate: classification === 'existing-install',
+      runGitInit,
 
       appDir: appDirRaw.trim(),
       checkpointCommand: checkpointCommandRaw.trim(),
@@ -262,6 +380,7 @@ export async function runWizard(targetDir, classification, preflightResults, opt
       gitignoreEntries,
       addNpmScripts,
       npmScriptNames,
+      skipBmad: !installBmadStep,
 
       wizardAnswers: {
         explainerConfirmed: true,

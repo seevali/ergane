@@ -8,6 +8,20 @@ For forward-looking design documents, browse [`system/chapters/`](system/chapter
 
 ---
 
+## [System] GitHub-issue intake / planning phase — two execution paths (2026-06-24)
+
+`scripts/ralph-loop.sh` gained a **Phase 0 (Plan)** front-end, so the loop now has two execution paths. **Path B "execute"** is the existing behavior, byte-compatible and unchanged: `--epic … --stories … --checkpoint …` runs the SM→Dev→Review loop on an existing epic. **Path A "intake"** is new: `--issue N [--repo OWNER/NAME]` fetches a single GitHub issue with `gh`, runs a BMAD planning chain — PRD (`docs/prd/issue-N.md`), an optional architecture note (`docs/architecture/issue-N.md`), and an epic with namespaced stories (`docs/epics/issue-N.md`, headers `### Story N.k:`) — then feeds the existing loop unchanged. `--plan-only` stops after planning for human review.
+
+**Why it matters:** the loop could only start from a hand-written epic. Path A lets it start from the place real work originates — a GitHub issue — while the entire downstream machinery (story slicing, `feat(N.k):` completion checks, per-story artifacts, budgets, parking) keeps working because Phase 0 emits the *exact* epic/story header format Phase 2 already parses.
+
+**How the invariants held:** `main()` (the SM→Dev→Review loop, fix/upstream/cascade/auto-heal, smart-salvage, budget caps, `run_claude()` signature) is untouched — Phase 0 is a gate placed *before* the `main` call. The three new planning roles (`pm`, `architect`, `planner`) were added exactly like every existing role: a `prompts/<role>/overlay.md`, a `prompts/bmad-fallbacks/<role>.md`, an `AGENT_<ROLE>_FILE` → BMAD `SKILL.md`, and a `build_system_prompts()` line — so planning system prompts stay byte-stable within a run and the prompt cache still hits. The `--stories all` expansion + per-story tracking-array init were lifted verbatim into `finalize_story_plan()` (arrays kept global) so both paths share one copy: Path B calls it immediately (same timing as before), Path A after Phase 0 builds the epic. A failed planning step *parks* (clear message + exit 2), it does not crash the run; Phase 0 is skipped on re-run if its epic already exists (resumability).
+
+Implemented interactively (not via a loop run — the loop script is read-only during its own runs). Verified with `bash -n`, `--dry-run-prompts` for both paths, and error-path smokes (mutual exclusion, missing `--issue`, non-existent issue pre-flight). A full end-to-end Path A build against a live issue is the next validation step.
+
+[Chapter README](system/chapters/2026-06-24-github-issue-intake/README.md)
+
+---
+
 ## [System] Ralph Loop Guided Installer chapter complete (2026-06-13)
 
 The installer is now complete and published. A new developer can run `npx <package> install` in an empty directory or existing project and have a working, customized Ralph Loop in under 5 minutes. The wizard teaches the concepts interactively; a `--yes` flag enables fully non-interactive mode for CI.
