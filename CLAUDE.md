@@ -14,7 +14,8 @@ This file gives agents working inside the loop the conventions they need. The [R
 - `scripts/prompts/` — externalized system prompts (execution-context, BMAD personas, stack rules)
 - `_bmad/` — BMAD Method install, **core + bmm modules only**
 - `system/` — System Track: loop-improvement work, organized as chapters under [`system/chapters/`](system/chapters/) (see [system/README.md](system/README.md) for the chapter convention)
-- `installer/` — Node.js CLI package for the guided installer; **Node.js permitted here only** (System Track, justified by the Ralph Loop Guided Installer chapter)
+- `installer/` — Node.js CLI package for the guided installer; **Node.js permitted here** (System Track, justified by the Ralph Loop Guided Installer chapter)
+- `tools/` — typed (TypeScript/Node) helper modules the Bash loop shells out to (e.g. the manifest/reconciliation reconciler); **Node.js permitted here** (System Track, justified by [`system/design/issue-native-bmad-loop.md`](system/design/issue-native-bmad-loop.md) §8)
 - `TIMELINE.md` — chronological log of repo evolution; entries tagged `[Demo]` or `[System]`
 
 ## Stack rules
@@ -59,7 +60,7 @@ A lean stack is a feature here. The demo is about the loop, not the app.
 - **Loop script is read-only during runs.** `scripts/ralph-loop.sh` may only be edited outside an active loop run. Inside the loop, no agent touches it.
 - **Checkpoint discipline.** If a test is flaky, fix it — never disable it or weaken the checkpoint command.
 - **No CI/CD work.** This is a demo. No GitHub Actions, no deploy configs.
-- **No new top-level directories** unless a story explicitly requires one. The current layout is the layout. **Exception:** `installer/` is approved by Story 1.1 of the Ralph Loop Guided Installer chapter (System Track).
+- **No new top-level directories** unless a story explicitly requires one. The current layout is the layout. **Exceptions (both System Track):** `installer/` (approved by Story 1.1 of the Ralph Loop Guided Installer chapter) and `tools/` (approved by `system/design/issue-native-bmad-loop.md` §8, for the typed reconciler).
 
 ## Definition of done (story level)
 

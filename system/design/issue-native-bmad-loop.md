@@ -196,7 +196,7 @@ A unit estimated `small` turns out to be an epic (or a story under-sized at plan
 - **`reconcile.ts`** (typed, unit-tested) owns: the three-source join (files ∪ git ∪ GitHub) from §5, and the re-sizing promotion transaction from §7. These are relational, partial-failure-prone state mutations — exactly where shell degrades into unverifiable `jq` pipelines and a stray unquoted variable silently drops a story.
 - **git remains the only thing that proves "done."**
 
-**This trips the ADR-001 "Bash → typed runtime" graduation tripwire deliberately.** Consequence: the reconciler is a **second Node exception** to the System Track "Bash + Markdown only outside `installer/`" rule. **Required follow-up:** amend root `CLAUDE.md` and `system/CLAUDE.md` to permit Node strictly within the reconciler's directory (proposed: `tools/` or `installer/`-adjacent), mirroring how `installer/` was carved out. Until that amendment lands, the design is accepted but not implementable.
+**This trips the ADR-001 "Bash → typed runtime" graduation tripwire deliberately.** Consequence: the reconciler is a **second Node exception** to the System Track "Bash + Markdown only outside `installer/`" rule. **Resolved (2026-06-25):** the reconciler lives in a new top-level **`tools/`** directory; root `CLAUDE.md` and `system/CLAUDE.md` have been amended to permit Node/TypeScript strictly within `installer/` and `tools/`, mirroring how `installer/` was carved out. The design is now implementable on this point.
 
 The typed module must satisfy the project's testing mandate: deterministic, agent-runnable unit tests (golden-file assertions; pin any nondeterministic input like the git SHA via env). With `--write` off, all GitHub ops short-circuit, so the full reconcile/promote flows are testable offline with zero network.
 
@@ -229,21 +229,21 @@ The typed module must satisfy the project's testing mandate: deterministic, agen
 
 ## 11. Traceability & roadmap
 
-The `2026-06-25-github-issue-roundtrip` chapter's five GitHub issues are **partial implementations** of this design. New component-epics this design surfaces are marked **NEW** (not yet filed).
+All work is tracked under the umbrella epic **[#12 The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/issues/12)**. The `2026-06-25-github-issue-roundtrip` chapter's five issues (**Slice A**) are *partial implementations*; the design-level component issues (**Slice B**, #7–#11) complete the machinery. Issue body files: round-trip slice in the chapter's `issues/`; Slice B in `system/design/issues/`.
 
-| Design component (§) | Status / GitHub issue |
+| Design component (§) | GitHub issue |
 |---|---|
-| Write-back projection: branch → PR → comment → labels (§4, §6) | partially [#1 The Round Trip](https://github.com/seevali/ralph-loop-demo/issues/1) |
-| Maintainer review gate / triage → `loop:ready` (§4) | partially [#2 Triage Before Toil](https://github.com/seevali/ralph-loop-demo/issues/2) |
-| Per-sub-issue PR experience (§6) | partially [#3 The Confessing PR](https://github.com/seevali/ralph-loop-demo/issues/3) |
-| Isolation for per-sub-issue / parallel builds (§6, §9) | partially [#4 Worktree-per-Issue](https://github.com/seevali/ralph-loop-demo/issues/4) |
-| Scheduler that *continues gated work* (§9) | partially [#5 Swarm + Mission Control](https://github.com/seevali/ralph-loop-demo/issues/5) |
-| **Sub-issue model + manifest + identity markers (§5)** | **NEW** |
-| **Typed `reconcile.ts` module (§8)** | **NEW** (blocked on the CLAUDE.md Node-exception amendment) |
-| **Full label state machine + `loop:ready` contract (§4)** | **NEW** (supersedes #1's narrower verdict-gated labels) |
-| **Native sub-issue creation + source-issue-as-epic body append (§6)** | **NEW** |
-| **Re-sizing / correct-course (§7)** | **NEW** |
-| **Big-issue intake binding: issue → PRD+epic+story files + sub-issues, System-Track-routed (§10)** | **NEW** (extends Path A) |
+| **Umbrella — the whole design** | [#12 EPIC: The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/issues/12) |
+| Write-back projection: branch → PR → comment → labels (§4, §6) | *partial* — [#1 Round Trip](https://github.com/seevali/ralph-loop-demo/issues/1) |
+| Maintainer review gate / triage scoring (§4) | *partial* — [#2 Triage Before Toil](https://github.com/seevali/ralph-loop-demo/issues/2) |
+| Per-sub-issue PR experience (§6) | *partial* — [#3 Confessing PR](https://github.com/seevali/ralph-loop-demo/issues/3) |
+| Isolation for per-sub-issue / parallel builds (§6, §9) | *partial* — [#4 Worktree-per-Issue](https://github.com/seevali/ralph-loop-demo/issues/4) |
+| Scheduler that *continues gated work* (§9) | *partial* — [#5 Swarm + Mission Control](https://github.com/seevali/ralph-loop-demo/issues/5) |
+| Label state machine + `loop:ready` contract (§4) — authoritative; supersedes #1's narrower verdict-gated labels | [#7](https://github.com/seevali/ralph-loop-demo/issues/7) |
+| Manifest + identity markers + typed `reconcile.ts` (§5, §8) | [#8](https://github.com/seevali/ralph-loop-demo/issues/8) |
+| Native sub-issue creation + source-issue-as-epic body (§6) | [#9](https://github.com/seevali/ralph-loop-demo/issues/9) |
+| Big-issue intake binding: issue → PRD/epic/stories + sub-issues, track-routed (§10) | [#10](https://github.com/seevali/ralph-loop-demo/issues/10) |
+| Re-sizing / correct-course (§7) | [#11](https://github.com/seevali/ralph-loop-demo/issues/11) |
 
 ---
 
@@ -274,5 +274,5 @@ The `2026-06-25-github-issue-roundtrip` chapter's five GitHub issues are **parti
   - *Typed reconciler module* (§8) — the three-source join is unverifiable in Bash; chosen over pure Bash despite adding a Node exception.
   - *Scheduler continues-gated-work-only* (§9) — supervised default; new work always needs a human gate.
   - *Detection autonomous, promotion human-gated* (§7) — under-sizing is often a wrong-requirement symptom; plan-shape is the maintainer's domain.
-- **Open decisions:** the reconciler's exact directory + the CLAUDE.md amendment wording (§8); whether the NEW component-epics (§11) become their own chapter or extend the round-trip chapter; the outward community-comment templates (§4).
+- **Open decisions:** whether the NEW component-epics (§11) become their own chapter or extend the round-trip chapter; the outward community-comment templates (§4). *(Resolved 2026-06-25: reconciler directory = `tools/`, CLAUDE.md Node-exception amendment applied — see §8.)*
 - **Provenance:** distilled from a BMAD party-mode roundtable (Mary/analyst, John/PM, Winston/architect, Amelia/dev, Sally/UX) on 2026-06-25.

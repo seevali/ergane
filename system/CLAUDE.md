@@ -8,7 +8,7 @@ Each chapter under [`chapters/`](chapters/) is a focused improvement to the loop
 
 ## Stack rules (override the root CLAUDE.md React rules)
 
-- **Languages:** Bash (the loop) and Markdown (prompt files, plans, docs). No language switches — no Python, Node, Go, Rust, etc., **except Node.js is permitted strictly inside the `installer/` directory** (the guided installer package; see Story 1.1). Everything outside `installer/` remains Bash + Markdown only.
+- **Languages:** Bash (the loop) and Markdown (prompt files, plans, docs). No language switches — no Python, Node, Go, Rust, etc., **except Node.js / TypeScript is permitted strictly inside two directories: `installer/`** (the guided installer package; see Story 1.1) **and `tools/`** (typed helper modules the loop shells out to — e.g. the manifest/reconciliation reconciler; see [`design/issue-native-bmad-loop.md`](design/issue-native-bmad-loop.md) §8). Everything outside `installer/` and `tools/` remains Bash + Markdown only.
 - **Bash style:** `set -euo pipefail` is mandatory in any new script. Always quote variable expansions. Prefer `[[ ]]` over `[ ]`. Bash 4+ assumed; POSIX-compat is not a goal.
 - **Markdown style:** prompt files (under `scripts/prompts/`, after the modularization chapter lands) must be free of YAML frontmatter unless the loader explicitly parses it. Use `{{PLACEHOLDER}}` (double-brace) for templated values — never bash `${}` interpolation inside MD files.
 - **Tests:** for shell scripts, validate with `bash -n <script>` (syntax) and dry-run modes where they exist. Add a dry-run mode rather than mocking when a script needs unit-test-like verification.
