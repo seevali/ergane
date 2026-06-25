@@ -2,6 +2,7 @@
 
 **Status:** Planning — drafted 2026-06-25 (System Track). Issues filed; no stories built yet.
 **Work surface:** `scripts/ralph-loop.sh` + `scripts/prompts/**` + `gh` write paths + docs.
+**Part of:** [`../../design/issue-native-bmad-loop.md`](../../design/issue-native-bmad-loop.md) — the parent architecture (how GitHub Issues + BMAD + the Ralph Loop unify). This chapter's five issues are *partial implementations* of that design (see its §11 traceability).
 **Builds on:** [`../2026-06-24-github-issue-intake/`](../2026-06-24-github-issue-intake/) — the completed *read-only* Path A intake. This chapter takes intake from **read-only** to **write-back**.
 **Driver:** authored interactively (BMAD party-mode roundtable: Mary/analyst, John/PM, Winston/architect, Amelia/dev, Sally/UX, Paige/tech-writer), 2026-06-25. Build work is not yet scheduled into a loop run.
 

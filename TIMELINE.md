@@ -8,6 +8,18 @@ For forward-looking design documents, browse [`system/chapters/`](system/chapter
 
 ---
 
+## [System] The Issue-Native BMAD Loop — unified system design (2026-06-25)
+
+Accepted the overarching architecture that unifies **GitHub Issues + the BMAD method + the Ralph Loop** into one frictionless workflow: every work item (owner- or community-filed) enters as a GitHub issue, passes a maintainer review gate, and the loop builds it — small work as the issue itself (one PR), big work with the source issue becoming a BMAD **epic** whose **stories are native GitHub sub-issues** (one PR each). The in-repo PRD/epic/story **files stay the book of record; GitHub is a projection**, kept consistent by a derivable JSON **manifest** (`story N.k ↔ sub-issue #X`) and a convergent reconciliation pass that heals its own projection but *flags — never reverses* — human edits.
+
+**The governing law** (four specialists converged on it): *the machine may think at any scale but act only at the scale the human last authorized; any change in authorized spend returns to the human.* It shows up as a 10-label state machine with a single human gate (`triage → loop:ready` authorizes spend + public writes), human-gated re-sizing (`bmad-correct-course` via append-and-supersede), and a scheduler that may only *continue* gated work, never introduce new work.
+
+**Two architecture rulings:** (1) a typed `reconcile.ts` module owns the manifest + the three-source (files∪git∪GitHub) join + the re-sizing transaction, while Bash orchestrates — this trips the ADR's bash→typed-runtime tripwire and needs a CLAUDE.md Node-exception amendment before implementation; (2) supervised-default autonomy. Drafted from a BMAD party-mode roundtable (analyst, PM, architect, dev, UX). Design only — unimplemented; the round-trip chapter's issues #1–#5 are partial implementations.
+
+[Design doc](system/design/issue-native-bmad-loop.md)
+
+---
+
 ## [System] GitHub Issue Round-Trip & Autonomy — chapter planned (2026-06-25)
 
 Opened the next System Track chapter, taking Path A from **read-only** to **write-back**. A BMAD party-mode roundtable (analyst, PM, architect, dev, UX, tech-writer) converged on five ideas — one product, five epics: **The Round Trip** (branch-per-issue → draft PR → self-updating issue comment → verdict-gated labels, behind a `--write` flag default-off), **The Confessing PR** (PR body synthesized from per-story artifacts with an "I had to guess" section), **Worktree-per-Issue** (`git worktree` isolation), **Triage Before Toil** (a readiness pre-phase that gates issues before building), and **Swarm + Mission Control** (serial multi-issue + `ralph watch` dashboard + brake; concurrency deferred to v2).

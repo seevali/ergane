@@ -3,7 +3,8 @@
 **Chapter:** `system/chapters/2026-06-25-github-issue-roundtrip/`
 **Status:** Planning — drafted 2026-06-25 (System Track). Not yet scheduled into a loop run.
 **Supersedes nothing. Builds on:** `system/chapters/2026-06-24-github-issue-intake/` (the completed read-only "Path A" intake).
-**This document is the source of truth.** GitHub issues are *views* of it (see §9 Traceability). A fresh reader should be able to act on this file alone.
+**Part of the larger architecture:** `system/design/issue-native-bmad-loop.md` (the parent design that unifies GitHub Issues + BMAD + the Ralph Loop). That doc is the source of truth for cross-cutting architecture; this PRD is the source of truth for *this chapter's* features.
+**This document is the source of truth for this chapter.** GitHub issues are *views* of it (see §9 Traceability). A fresh reader should be able to act on this file alone.
 
 ---
 
