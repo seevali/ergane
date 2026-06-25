@@ -190,6 +190,8 @@ A unit estimated `small` turns out to be an epic (or a story under-sized at plan
 
 ## 8. Runtime split (decision, 2026-06-25)
 
+> Full rationale + the whole-orchestrator "should we rewrite to TypeScript / adopt Sandcastle?" decision: [`adr-002-orchestrator-runtime.md`](adr-002-orchestrator-runtime.md). Summary: **stay Bash + a typed reconciler (strangler-fig); Sandcastle is plumbing, not substrate; the trigger to graduate the loop kernel is v2 concurrency.**
+
 **Bash orchestrates and observes; one typed (TypeScript/Node) module owns the manifest and all GitHub-action derivation.**
 
 - **Bash** keeps the linear, observable work: invoking `claude -p` per step, `gh issue create`, `git log --grep`, the fenced-block splice, triggering reconciliation.

@@ -8,6 +8,14 @@ For forward-looking design documents, browse [`system/chapters/`](system/chapter
 
 ---
 
+## [System] ADR-002: keep the orchestrator in Bash (don't rewrite to TypeScript / Sandcastle) (2026-06-25)
+
+Evaluated converting the Ralph Loop orchestrator (`scripts/ralph-loop.sh`) from Bash to a TypeScript tool like `mattpocock/sandcastle`. **Decision: stay Bash + a typed reconciler (strangler-fig); Sandcastle is plumbing, not substrate.** Rationale: language doesn't move the user outcome; the ADR-001 graduation tripwire fires on the reconciler slice already being carved into `tools/`, not the loop kernel; a rewrite re-derives ~1900 lines of battle-tested scar tissue and risks silent prompt-cache byte-drift (the cost lever); and the current roadmap (#1–#12) is serial — design §5 defers the Swarm's true concurrency to v2, so the one trigger that would force a graduation isn't present. Sandcastle's session-`.fork()` model also fights Ralph's clean-context-per-step. **The trigger to revisit:** v2 concurrency becomes P0 (then adopt Sandcastle for the concurrency/sandbox *plumbing*, keeping the loop's heart in owned source) or an observed self-modification corruption. Non-negotiables carried forward: a `--dry-run-prompts` byte-diff CI gate on prompt-adjacent changes; the loop's ~80-line heart stays readable/owned; clone-and-run in one move. From a BMAD party-mode roundtable (architect, dev, PM, UX).
+
+[ADR-002](system/design/adr-002-orchestrator-runtime.md)
+
+---
+
 ## [System] The Issue-Native BMAD Loop — unified system design (2026-06-25)
 
 Accepted the overarching architecture that unifies **GitHub Issues + the BMAD method + the Ralph Loop** into one frictionless workflow: every work item (owner- or community-filed) enters as a GitHub issue, passes a maintainer review gate, and the loop builds it — small work as the issue itself (one PR), big work with the source issue becoming a BMAD **epic** whose **stories are native GitHub sub-issues** (one PR each). The in-repo PRD/epic/story **files stay the book of record; GitHub is a projection**, kept consistent by a derivable JSON **manifest** (`story N.k ↔ sub-issue #X`) and a convergent reconciliation pass that heals its own projection but *flags — never reverses* — human edits.
