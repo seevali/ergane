@@ -1,5 +1,5 @@
 > **Epic** · part of the System Track chapter `system/chapters/2026-06-25-github-issue-roundtrip/`
-> Source of truth: [`prd.md`](../../system/chapters/2026-06-25-github-issue-roundtrip/prd.md) · Decision record: [`adr-001`](../../system/chapters/2026-06-25-github-issue-roundtrip/adr-001-github-as-shared-mutable-state.md)
+> Source of truth: [`prd.md`](https://github.com/seevali/ralph-loop-demo/blob/main/system/chapters/2026-06-25-github-issue-roundtrip/prd.md) · Decision record: [`adr-001`](https://github.com/seevali/ralph-loop-demo/blob/main/system/chapters/2026-06-25-github-issue-roundtrip/adr-001-github-as-shared-mutable-state.md)
 
 ## Context (cold-start)
 
@@ -25,7 +25,7 @@ _(child issue checklist injected here by `issues/create-github-issues.sh`)_
 2. **Idempotency** — re-running any phase converges to the same GitHub state, never duplicates it (find-by-marker comment edits, PR-URL persisted to avoid duplicate PRs, single-call label transitions).
 3. **No auto-merge / auto-close** — the human's thumb stays on the merge button.
 
-See [`adr-001-github-as-shared-mutable-state.md`](../../system/chapters/2026-06-25-github-issue-roundtrip/adr-001-github-as-shared-mutable-state.md) for the reasoning (the "Rubicon": write-back makes GitHub shared mutable state with multiple writers).
+See [`adr-001-github-as-shared-mutable-state.md`](https://github.com/seevali/ralph-loop-demo/blob/main/system/chapters/2026-06-25-github-issue-roundtrip/adr-001-github-as-shared-mutable-state.md) for the reasoning (the "Rubicon": write-back makes GitHub shared mutable state with multiple writers).
 
 ## Autonomy ladder (default: supervised)
 

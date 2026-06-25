@@ -1,5 +1,5 @@
 > **Idea 1 / 5 · the spine** · epic: GitHub Issue Round-Trip & Autonomy
-> Source of truth: [`prd.md` §3 Idea 1](../../system/chapters/2026-06-25-github-issue-roundtrip/prd.md) · invariants: [`adr-001`](../../system/chapters/2026-06-25-github-issue-roundtrip/adr-001-github-as-shared-mutable-state.md)
+> Source of truth: [`prd.md` §3 Idea 1](https://github.com/seevali/ralph-loop-demo/blob/main/system/chapters/2026-06-25-github-issue-roundtrip/prd.md) · invariants: [`adr-001`](https://github.com/seevali/ralph-loop-demo/blob/main/system/chapters/2026-06-25-github-issue-roundtrip/adr-001-github-as-shared-mutable-state.md)
 
 ## Context (cold-start)
 

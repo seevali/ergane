@@ -1,5 +1,5 @@
 > **Idea 3 / 5 · plumbing** · epic: GitHub Issue Round-Trip & Autonomy
-> Source of truth: [`prd.md` §3 Idea 3](../../system/chapters/2026-06-25-github-issue-roundtrip/prd.md)
+> Source of truth: [`prd.md` §3 Idea 3](https://github.com/seevali/ralph-loop-demo/blob/main/system/chapters/2026-06-25-github-issue-roundtrip/prd.md)
 
 ## Context (cold-start)
 

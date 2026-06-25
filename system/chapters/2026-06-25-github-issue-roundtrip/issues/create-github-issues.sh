@@ -43,10 +43,13 @@ find_issue_number() { # exact title -> number (empty if none)
 }
 
 create_issue() { # title  body_file  label[,label...] -> echoes number
+  # Declarative: the body FILES are the source of truth. On re-run, an existing
+  # issue's body is re-synced from its file (overwrites manual edits to the body).
   local title="$1" body="$2" labels="$3" num
   num="$(find_issue_number "$title")"
   if [[ -n "$num" ]]; then
-    echo "    exists: #$num  $title" >&2
+    gh issue edit "$num" --repo "$REPO" --body-file "$body" >/dev/null
+    echo "    synced: #$num  $title" >&2
     printf '%s' "$num"; return 0
   fi
   local args=(--repo "$REPO" --title "$title" --body-file "$body")
