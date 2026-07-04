@@ -2,10 +2,11 @@
 
 import { program } from 'commander';
 import { readFileSync } from 'fs';
+import { access, constants } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve } from 'path';
-import { preflight, renderChecklist } from '../src/preflight.js';
-import { classifyTarget } from '../src/classify.js';
+import { preflight, renderChecklist, checkGitIdentity, checkGh } from '../src/preflight.js';
+import { classifyTarget, findAncestorInstall } from '../src/classify.js';
 import { runWizard } from '../src/wizard.js';
 import { writeInstall, executeUpdate } from '../src/writer.js';
 import { printOutro } from '../src/outro.js';
@@ -14,6 +15,23 @@ import { parseCliArgs, validateCliArgs, listOptions } from '../src/cli-parser.js
 import { detectUpdate } from '../src/updateDetector.js';
 import { resolveConflicts } from '../src/updateConflictResolver.js';
 import { uninstall } from '../src/uninstall.js';
+import { ManifestError } from '../src/manifest.js';
+
+const CONFLICT_VALUES = ['keep', 'take', 'backup'];
+
+/**
+ * Fail fast if the target directory is not writable, BEFORE the wizard runs — a
+ * read-only target must not fail only at the final write step after the whole flow.
+ * @returns {Promise<boolean>} true if writable
+ */
+async function isWritable(dir) {
+  try {
+    await access(dir, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -56,11 +74,27 @@ program
       process.exit(1);
     }
 
+    // Validate --update-conflicts unconditionally (it was previously ignored on the
+    // fresh-install path, so a typo was silently swallowed depending on target state).
+    if (options.updateConflicts && !CONFLICT_VALUES.includes(options.updateConflicts)) {
+      console.error(`Error: Invalid --update-conflicts value: ${options.updateConflicts}. Valid values: ${CONFLICT_VALUES.join(', ')}`);
+      process.exit(1);
+    }
+
     const targetDir = resolve(options.directory ?? '.');
 
     // Run preflight checks
     const preflightResults = await preflight();
     renderChecklist(preflightResults);
+
+    // Ground checks the LOOP (not the installer) will need. Advisory only — these
+    // never break --yes/non-TTY: git identity is a warn, gh is informational.
+    const gitIdentity = checkGitIdentity();
+    if (gitIdentity.status !== 'pass') {
+      console.log(gitIdentity.message);
+    }
+    const gh = checkGh();
+    console.log(gh.message);
 
     if (preflightResults.node.status === 'fail') {
       console.error('\nNode.js version check failed. Please upgrade Node.js to >= 20.');
@@ -80,26 +114,32 @@ program
       process.exit(1);
     }
 
+    // Preflight the ground before the wizard: writable-target check FIRST, so a
+    // read-only target fails here instead of at the final write step after the
+    // whole wizard flow.
+    if (!(await isWritable(targetDir))) {
+      console.error(`\nError: target directory is not writable: ${targetDir}\n  Fix permissions and retry: chmod +w ${targetDir}`);
+      process.exit(1);
+    }
+
     // Update mode: existing install detected — skip wizard and run update flow
     if (classifyResult.type === 'existing-install') {
-      const validConflictValues = ['keep', 'take', 'backup'];
-      if (options.updateConflicts && !validConflictValues.includes(options.updateConflicts)) {
-        console.error(`Error: Invalid --update-conflicts value: ${options.updateConflicts}. Valid values: keep, take, backup`);
-        process.exit(1);
-        return;
-      }
-
       let updateInfo;
       try {
         updateInfo = await detectUpdate(targetDir);
       } catch (err) {
+        if (err instanceof ManifestError) {
+          console.error(`\nError: ${err.message}`);
+          process.exit(1);
+          return;
+        }
         console.error(`\nUpdate detection failed: ${err.message}`);
         process.exit(1);
         return;
       }
 
-      if (!updateInfo.isUpdate) {
-        console.log('Already up to date.');
+      if (updateInfo.upToDate) {
+        console.log(`Already up to date (v${updateInfo.installedVersion}, no drifted files).`);
         process.exit(0);
         return;
       }
@@ -155,6 +195,28 @@ program
       return;
     }
 
+    // Nested-install guard: warn when an ancestor directory already has a Ralph Loop
+    // install. Proceed only with explicit confirmation (or --force in --yes mode) so a
+    // second, independent nested install isn't created silently.
+    const ancestorInstall = await findAncestorInstall(targetDir);
+    if (ancestorInstall) {
+      console.log(`\n⚠ An existing Ralph Loop install was found above this directory:\n  ${ancestorInstall}`);
+      if (options.yes) {
+        if (!options.force) {
+          console.error('Refusing to create a nested install non-interactively. Re-run with --force to proceed anyway.');
+          process.exit(1);
+        }
+        console.log('Proceeding with a nested install (--force).');
+      } else {
+        const { confirm, isCancel } = await import('@clack/prompts');
+        const answer = await confirm({ message: 'Create a nested install here anyway?', initialValue: false });
+        if (isCancel(answer) || answer !== true) {
+          console.log('Nothing was changed.');
+          process.exit(0);
+        }
+      }
+    }
+
     // Run wizard (interactive or non-interactive via --yes)
     let installPlan;
     try {
@@ -202,9 +264,8 @@ program
   .action(async (options) => {
     const targetDir = resolve(options.directory ?? '.');
 
-    const validConflictValues = ['keep', 'take', 'backup'];
-    if (options.updateConflicts && !validConflictValues.includes(options.updateConflicts)) {
-      console.error(`Error: Invalid --update-conflicts value: ${options.updateConflicts}. Valid values: keep, take, backup`);
+    if (options.updateConflicts && !CONFLICT_VALUES.includes(options.updateConflicts)) {
+      console.error(`Error: Invalid --update-conflicts value: ${options.updateConflicts}. Valid values: ${CONFLICT_VALUES.join(', ')}`);
       process.exit(1);
       return;
     }
@@ -228,13 +289,18 @@ program
     try {
       updateInfo = await detectUpdate(targetDir);
     } catch (err) {
+      if (err instanceof ManifestError) {
+        console.error(`\nError: ${err.message}`);
+        process.exit(1);
+        return;
+      }
       console.error(`\nUpdate detection failed: ${err.message}`);
       process.exit(1);
       return;
     }
 
-    if (!updateInfo.isUpdate) {
-      console.log('Already up to date.');
+    if (updateInfo.upToDate) {
+      console.log(`Already up to date (v${updateInfo.installedVersion}, no drifted files).`);
       process.exit(0);
       return;
     }
@@ -304,10 +370,13 @@ program
     });
 
     if (!result.success) {
+      // On failure, uninstall() returns before printing (nothing was removed), so the
+      // bin surfaces the message here.
       console.error(result.message);
       process.exit(1);
     } else {
-      console.log(result.message);
+      // On success, uninstall() has already printed the full summary — do NOT re-log
+      // it here (that produced the duplicated completion line).
       process.exit(0);
     }
   });
@@ -328,9 +397,11 @@ program
     }
   });
 
-program.parse(process.argv);
-
+// Bare invocation (no subcommand): show help on STDOUT and exit 0, BEFORE
+// commander's own no-command handling writes help to stderr and exits 1.
 if (process.argv.length === 2) {
   program.outputHelp();
   process.exit(0);
 }
+
+program.parse(process.argv);

@@ -114,10 +114,22 @@ function buildNonInteractivePlan(targetDir, classification, cliAnswers, log = co
     npmScriptNames,
     skipBmad,
 
+    // Persist the ACTUAL configured values (not just confirmation booleans) so a
+    // later `update` re-reads them as defaults and never regenerates config from
+    // wizard defaults, silently discarding the user's stack/checkpoint/app dir.
     wizardAnswers: {
       explainerConfirmed: true,
       stackConfirmed: true,
       loopKnobsConfirmed: true,
+      appDir,
+      checkpointCommand,
+      stackDescription,
+      taskSource,
+      taskSourcePath: undefined,
+      skipBmad,
+      addNpmScripts,
+      loopRetries: 3,
+      maxTokensPerTurn: 200000,
     },
 
     summaryLines,
@@ -384,10 +396,21 @@ export async function runWizard(targetDir, classification, preflightResults, opt
       npmScriptNames,
       skipBmad: !installBmadStep,
 
+      // Persist the ACTUAL configured values (see buildNonInteractivePlan) so a later
+      // `update` preserves the user's stack/checkpoint/app dir byte-for-byte.
       wizardAnswers: {
         explainerConfirmed: true,
         stackConfirmed: true,
         loopKnobsConfirmed: true,
+        appDir: appDirRaw.trim(),
+        checkpointCommand: checkpointCommandRaw.trim(),
+        stackDescription: stackDescriptionRaw.trim(),
+        taskSource,
+        taskSourcePath: taskSourcePath?.trim(),
+        skipBmad: !installBmadStep,
+        addNpmScripts,
+        loopRetries: parseInt(loopRetriesRaw.trim(), 10),
+        maxTokensPerTurn: parseInt(maxTokensPerTurnRaw.trim(), 10),
       },
 
       summaryLines,

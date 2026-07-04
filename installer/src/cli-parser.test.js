@@ -67,7 +67,8 @@ test('validateCliArgs: throws on invalid --app-dir (absolute path)', () => {
   assert.throws(
     () => validateCliArgs({ appDir: '/absolute/path' }),
     (err) => {
-      assert.ok(err.message.includes('appDir'), 'error should reference the flag');
+      assert.ok(err.message.includes('--app-dir'), 'error should reference the real kebab flag');
+      assert.ok(!/\bappDir\b/.test(err.message), 'error must not leak the camelCase key');
       return true;
     },
   );
@@ -85,7 +86,8 @@ test('validateCliArgs: throws on invalid --use-bmad value', () => {
   assert.throws(
     () => validateCliArgs({ useBmad: 'maybe' }),
     (err) => {
-      assert.ok(err.message.includes('useBmad'), 'error should reference the flag');
+      assert.ok(err.message.includes('--use-bmad'), 'error should reference the real kebab flag');
+      assert.ok(!/\buseBmad\b/.test(err.message), 'error must not leak the camelCase key');
       return true;
     },
   );
@@ -100,7 +102,8 @@ test('validateCliArgs: throws on invalid --task-source value', () => {
   assert.throws(
     () => validateCliArgs({ taskSource: 'unknown' }),
     (err) => {
-      assert.ok(err.message.includes('taskSource'), 'error should reference the flag');
+      assert.ok(err.message.includes('--task-source'), 'error should reference the real kebab flag');
+      assert.ok(!/\btaskSource\b/.test(err.message), 'error must not leak the camelCase key');
       return true;
     },
   );

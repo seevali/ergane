@@ -8,6 +8,7 @@ import {
   categorizeFiles,
   removeFile,
   removeEmptyDir,
+  pruneEmptyInstallerDirs,
   cleanGitignore,
   uninstall,
 } from './uninstall.js';
@@ -277,7 +278,7 @@ test('uninstall: returns failure when no manifest exists', async () => {
   try {
     const result = await uninstall({ targetDir: dir }, { isTTY: false });
     assert.equal(result.success, false);
-    assert.ok(result.message.includes('No Ralph Loop install found'), result.message);
+    assert.ok(result.message.includes('no Ralph Loop installation found'), result.message);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
@@ -605,6 +606,120 @@ test('uninstall: skips user-owned prompt when no user-owned files exist', async 
 
     assert.equal(result.success, true);
     assert.equal(promptCalled, false, 'prompt not called when no user-owned files');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── L1: non-interactive uninstall must not crash or half-delete ───────────────
+
+test('uninstall: non-TTY without --yes/--force fails closed BEFORE deleting anything', async () => {
+  const dir = await makeTempDir();
+  try {
+    await createFixtureWithManifest(dir, {
+      'scripts/ralph-loop.sh': { ownership: 'installer-owned' },
+      'docs/prd.md': { ownership: 'user-owned' },
+    });
+
+    // No injected prompts + stdinIsTTY false → would hit the raw @clack crash.
+    const result = await uninstall(
+      { targetDir: dir, yes: false, force: false },
+      { isTTY: false, stdinIsTTY: false, log: () => {}, errLog: () => {} },
+    );
+
+    assert.equal(result.success, false, 'must fail closed, not crash');
+    assert.ok(/--yes|--force/.test(result.message), 'message should point at --yes/--force');
+    // Nothing was deleted — the tree is intact and the manifest still present.
+    assert.equal(await fileExists(path.join(dir, 'scripts/ralph-loop.sh')), true, 'installer file untouched');
+    assert.equal(await fileExists(path.join(dir, '.ralph', 'manifest.json')), true, 'manifest untouched');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('uninstall: --yes prunes now-empty installer directories', async () => {
+  const dir = await makeTempDir();
+  try {
+    await createFixtureWithManifest(dir, {
+      'scripts/prompts/common/system.md': { ownership: 'installer-owned' },
+      'scripts/ralph-loop.sh': { ownership: 'installer-owned' },
+    });
+
+    await uninstall(
+      { targetDir: dir, yes: true, force: false },
+      { isTTY: false, log: () => {}, errLog: () => {} },
+    );
+
+    assert.equal(await fileExists(path.join(dir, 'scripts', 'prompts', 'common')), false, 'empty prompts dir pruned');
+    assert.equal(await fileExists(path.join(dir, 'scripts', 'prompts')), false, 'empty prompts dir pruned');
+    assert.equal(await fileExists(path.join(dir, 'scripts')), false, 'empty scripts dir pruned');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('uninstall: prune keeps directories that still hold preserved user files', async () => {
+  const dir = await makeTempDir();
+  try {
+    await createFixtureWithManifest(dir, {
+      'docs/epics/project-prd.md': { ownership: 'user-owned' },
+      'docs/project-conventions.md': { ownership: 'installer-owned' },
+    });
+
+    await uninstall(
+      { targetDir: dir, yes: true, force: false },
+      { isTTY: false, log: () => {}, errLog: () => {} },
+    );
+
+    // docs/ and docs/epics/ still hold the preserved user PRD → not pruned.
+    assert.equal(await fileExists(path.join(dir, 'docs', 'epics', 'project-prd.md')), true, 'user file preserved');
+    assert.equal(await fileExists(path.join(dir, 'docs', 'epics')), true, 'non-empty dir kept');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('uninstall: re-running on a half-deleted state (manifest present) completes cleanly', async () => {
+  const dir = await makeTempDir();
+  try {
+    await createFixtureWithManifest(dir, {
+      'scripts/ralph-loop.sh': { ownership: 'installer-owned' },
+      'scripts/prompts/common/system.md': { ownership: 'installer-owned' },
+      'docs/prd.md': { ownership: 'user-owned' },
+    });
+
+    // Simulate an interrupted uninstall: some installer files already gone,
+    // manifest still present (manifest is removed LAST, so this is re-runnable).
+    await fs.unlink(path.join(dir, 'scripts', 'ralph-loop.sh'));
+
+    const result = await uninstall(
+      { targetDir: dir, yes: true, force: false },
+      { isTTY: false, log: () => {}, errLog: () => {} },
+    );
+
+    assert.equal(result.success, true, 're-run over a half-deleted tree should succeed');
+    assert.equal(await fileExists(path.join(dir, '.ralph', 'manifest.json')), false, 'manifest removed on the clean re-run');
+    assert.equal(await fileExists(path.join(dir, 'docs', 'prd.md')), true, 'user file still preserved');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('pruneEmptyInstallerDirs: removes empty dirs deepest-first, skips non-empty', async () => {
+  const dir = await makeTempDir();
+  try {
+    await fs.mkdir(path.join(dir, 'scripts', 'prompts', 'common'), { recursive: true });
+    await fs.mkdir(path.join(dir, 'docs', 'epics'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'docs', 'epics', 'keep.md'), 'x', 'utf8');
+
+    const removed = await pruneEmptyInstallerDirs(dir, [
+      'scripts/prompts/common/system.md',
+      'docs/epics/project-prd.md',
+    ]);
+
+    assert.ok(removed.includes('scripts/prompts/common'), 'deep empty dir removed');
+    assert.ok(removed.includes('scripts/prompts'), 'parent empty dir removed');
+    assert.ok(!removed.includes('docs/epics'), 'non-empty dir kept');
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }

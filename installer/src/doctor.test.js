@@ -194,33 +194,114 @@ test('doctor: missing file → result.passed is false', async () => {
 
 // ─── AC-3: Checksum Validation ────────────────────────────────────────────────
 
-test('doctor: checksum mismatch → file-checksum check fails', async () => {
+test('doctor: user-editable file drift (project-conventions.md) → INFO, doctor still passes', async () => {
   const dir = await makeTempDir();
   try {
     await writeFixture(dir, {
       'docs/project-conventions.md': '# Conventions\n',
     });
 
-    // Modify the file after manifest was written
+    // The outro invites editing this file. Divergence must NOT be a red failure.
     await fs.appendFile(
       path.join(dir, 'docs', 'project-conventions.md'),
       '\n# User modification\n',
     );
 
-    const { findings } = await runDoctor(dir, {
+    const result = await runDoctor(dir, {
       log: () => {},
       checkCommand: mockCommandFound,
     });
 
-    const checksumFinding = findings.find(
+    const failFinding = result.findings.find(
       (f) => f.check === 'file-checksum:docs/project-conventions.md',
     );
-    assert.ok(checksumFinding, 'should have a file-checksum finding for the modified file');
-    assert.equal(checksumFinding.status, 'fail');
-    assert.ok(
-      checksumFinding.message.includes('docs/project-conventions.md'),
-      'message should name the modified file',
+    assert.ok(!failFinding, 'must not emit a red checksum FAIL for a user-editable file');
+
+    const infoFinding = result.findings.find(
+      (f) => f.check === 'file-customized:docs/project-conventions.md',
     );
+    assert.ok(infoFinding, 'should emit an informational customized finding');
+    assert.equal(infoFinding.informational, true);
+    assert.equal(result.passed, true, 'editing an invited-to-edit file must not fail doctor');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: ralph-owned file drift (ralph-loop.sh) → FAIL with an update remediation', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeFixture(dir, {
+      'scripts/ralph-loop.sh': '#!/bin/bash\necho loop\n',
+    });
+
+    await fs.appendFile(path.join(dir, 'scripts', 'ralph-loop.sh'), '\n# tampered\n');
+
+    const result = await runDoctor(dir, {
+      log: () => {},
+      checkCommand: mockCommandFound,
+    });
+
+    const finding = result.findings.find(
+      (f) => f.check === 'file-checksum:scripts/ralph-loop.sh',
+    );
+    assert.ok(finding, 'ralph-owned drift should FAIL');
+    assert.equal(finding.status, 'fail');
+    assert.ok(/update/i.test(finding.message), 'FAIL line must carry a remediation command');
+    assert.equal(result.passed, false);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: corrupted manifest → distinct corrupted FAIL (not "not found")', async () => {
+  const dir = await makeTempDir();
+  try {
+    await fs.mkdir(path.join(dir, '.ralph'), { recursive: true });
+    await fs.writeFile(path.join(dir, '.ralph', 'manifest.json'), '{bad json', 'utf8');
+
+    const result = await runDoctor(dir, {
+      log: () => {},
+      checkCommand: mockCommandFound,
+    });
+
+    const finding = result.findings.find((f) => f.check === 'manifest-valid');
+    assert.ok(finding, 'should emit a manifest-valid finding for corruption');
+    assert.ok(/corrupted/i.test(finding.message), 'message must say corrupted');
+    assert.equal(result.passed, false);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: orphaned install (loop files but no manifest) → adopt-them message', async () => {
+  const dir = await makeTempDir();
+  try {
+    await fs.mkdir(path.join(dir, 'scripts'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'scripts', 'ralph-loop.sh'), '#!/bin/bash\n', 'utf8');
+
+    const result = await runDoctor(dir, {
+      log: () => {},
+      checkCommand: mockCommandFound,
+    });
+
+    const finding = result.findings.find((f) => f.check === 'manifest-exists');
+    assert.ok(finding, 'should emit a manifest-exists finding');
+    assert.ok(/found loop files but no manifest/i.test(finding.message), finding.message);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: missing-file FAIL carries an install remediation', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeFixture(dir, { 'scripts/ralph-loop.sh': '#!/bin/bash\n' });
+    await fs.unlink(path.join(dir, 'scripts', 'ralph-loop.sh'));
+
+    const result = await runDoctor(dir, { log: () => {}, checkCommand: mockCommandFound });
+    const finding = result.findings.find((f) => f.check === 'file-exists:scripts/ralph-loop.sh');
+    assert.ok(/install/i.test(finding.message), 'missing-file FAIL must name a remediation');
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }

@@ -1,6 +1,26 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { hashFile } from './writer.js';
+import { cliInvocation } from './pkg.js';
+import {
+  tryLoadManifest,
+  hasOrphanedLoopFiles,
+  MANIFEST_CORRUPTED_MESSAGE,
+} from './manifest.js';
+
+/**
+ * Installer files the outro explicitly invites the user to edit (tech stack /
+ * checkpoint in project-conventions.md; agent behavior in scripts/prompts/**).
+ * Drift in these is EXPECTED customization → reported as INFO, never a red FAIL that
+ * can never clear. Everything else installer-owned is ralph-owned (drift = real FAIL).
+ *
+ * @param {string} relPath
+ * @returns {boolean}
+ */
+export function isUserEditableInstalledFile(relPath) {
+  const n = relPath.replace(/\\/g, '/');
+  return n === 'docs/project-conventions.md' || n.startsWith('scripts/prompts/');
+}
 
 /**
  * Validate an existing Ralph Loop installation.
@@ -23,16 +43,36 @@ export async function runDoctor(targetPath, opts = {}) {
   const checkCommand = opts.checkCommand ?? checkCommandAvailable;
   const checkGhAuth = opts.checkGhAuth ?? checkGhAuthStatus;
 
+  const cli = cliInvocation();
   const findings = [];
 
-  // Load manifest (if missing, it's a finding)
-  const manifest = await loadManifest(targetPath);
+  // Load manifest through the shared loader so corrupted vs never-installed vs
+  // orphaned (loop files present, manifest gone) are reported distinctly and
+  // consistently with the other subcommands.
+  const loaded = await tryLoadManifest(targetPath);
+  const manifest = loaded.manifest ?? null;
   if (!manifest) {
-    findings.push({
-      check: 'manifest-exists',
-      status: 'fail',
-      message: '.ralph/manifest.json not found — is this a Ralph installation?',
-    });
+    if (loaded.error && loaded.error.code === 'corrupted') {
+      findings.push({
+        check: 'manifest-valid',
+        status: 'fail',
+        message: `${MANIFEST_CORRUPTED_MESSAGE} (remediation: ${cli} install to repair)`,
+      });
+    } else if (await hasOrphanedLoopFiles(targetPath)) {
+      findings.push({
+        check: 'manifest-exists',
+        status: 'fail',
+        message:
+          'found loop files but no manifest (.ralph/manifest.json) — re-run install to adopt them',
+      });
+    } else {
+      findings.push({
+        check: 'manifest-exists',
+        status: 'fail',
+        message:
+          'no Ralph Loop installation found here (looked for .ralph/manifest.json)',
+      });
+    }
     // Continue validation with other checks (don't bail)
   }
 
@@ -52,7 +92,7 @@ export async function runDoctor(targetPath, opts = {}) {
         findings.push({
           check: `file-exists:${filePath}`,
           status: 'fail',
-          message: `Required file missing: ${filePath}`,
+          message: `Required file missing: ${filePath} — remediation: run '${cli} install' to restore it`,
         });
       }
     }
@@ -76,11 +116,23 @@ export async function runDoctor(targetPath, opts = {}) {
       if (exists) {
         const actualChecksum = await hashFile(fullPath);
         if (actualChecksum !== fileEntry.checksum) {
-          findings.push({
-            check: `file-checksum:${filePath}`,
-            status: 'fail',
-            message: `File modified: ${filePath} (manifest checksum mismatch)`,
-          });
+          if (isUserEditableInstalledFile(filePath)) {
+            // The outro invites editing this file — divergence is expected, not a
+            // failure. Report it as INFO so doctor can still pass (it never could
+            // before, permanently red on a file users were told to customize).
+            findings.push({
+              check: `file-customized:${filePath}`,
+              status: 'info',
+              informational: true,
+              message: `Customized (expected): ${filePath} — user edits here are fine`,
+            });
+          } else {
+            findings.push({
+              check: `file-checksum:${filePath}`,
+              status: 'fail',
+              message: `File modified: ${filePath} (manifest checksum mismatch) — remediation: run '${cli} update' to restore the shipped version`,
+            });
+          }
         }
       }
     }
@@ -92,7 +144,9 @@ export async function runDoctor(targetPath, opts = {}) {
     findings.push({
       check: 'jq-available',
       status: 'fail',
-      message: 'jq not found in PATH — required for loop operation',
+      message:
+        'jq not found in PATH — required for loop operation. ' +
+        'Remediation: install jq (macOS: `brew install jq`; Debian/Ubuntu: `sudo apt-get install jq`; see https://jqlang.github.io/jq/download/)',
     });
   } else {
     findings.push({
@@ -108,7 +162,9 @@ export async function runDoctor(targetPath, opts = {}) {
     findings.push({
       check: 'claude-cli-available',
       status: 'fail',
-      message: 'claude CLI not found in PATH — required for agent orchestration',
+      message:
+        'claude CLI not found in PATH — required for agent orchestration. ' +
+        'Remediation: install it with `npm install -g @anthropic-ai/claude-code` (see https://docs.claude.com/en/docs/claude-code)',
     });
   } else {
     findings.push({
@@ -274,20 +330,5 @@ async function checkGhAuthStatus() {
     return { authenticated: true };
   } catch {
     return { authenticated: false };
-  }
-}
-
-/**
- * Load manifest from targetPath/.ralph/manifest.json.
- * @param {string} targetPath
- * @returns {Promise<object|null>}
- */
-async function loadManifest(targetPath) {
-  try {
-    const manifestPath = path.join(targetPath, '.ralph', 'manifest.json');
-    const content = await fs.readFile(manifestPath, 'utf8');
-    return JSON.parse(content);
-  } catch {
-    return null;
   }
 }

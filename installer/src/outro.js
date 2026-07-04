@@ -20,9 +20,22 @@ export function printOutro(result, plan, log = console.log) {
 
   const cli = cliInvocation();
 
+  // When an opt-in step (BMAD) failed, the banner must NOT claim unqualified success.
+  // The install itself completed (exit code stays 0), but the degraded state is stated.
+  const bmadFailed = result.bmadFailed === true;
+
   log('\n═══════════════════════════════════════════════════════════════════');
-  log('✓ Ralph Loop installed successfully!');
+  if (bmadFailed) {
+    log('✓ Ralph Loop installed, with 1 step needing attention (BMAD).');
+  } else {
+    log('✓ Ralph Loop installed successfully!');
+  }
   log('═══════════════════════════════════════════════════════════════════\n');
+
+  if (bmadFailed) {
+    log('The loop files are in place and ready. The optional BMAD module install did');
+    log('not complete — see the BMAD error above for the exact command to re-run.\n');
+  }
 
   const projectPath = plan.targetDir === '.' ? 'current directory' : plan.targetDir;
 

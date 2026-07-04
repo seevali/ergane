@@ -74,6 +74,19 @@ const FLAG_DEFINITIONS = [
 ];
 
 /**
+ * The kebab-case CLI flag a user actually types for a given definition, derived
+ * from `def.flag` by stripping the `<…>` argument placeholder. Validation errors
+ * must name THIS (e.g. `--app-dir`), never the internal camelCase key (`appDir`),
+ * so the text a user copies back into their shell matches a flag that parses.
+ *
+ * @param {object} def - a FLAG_DEFINITIONS entry
+ * @returns {string} e.g. "--app-dir"
+ */
+export function flagNameFor(def) {
+  return def.flag.split(/\s+/)[0];
+}
+
+/**
  * Extract CLI-provided answers from the Commander options object.
  * Returns an object mapping question keys to CLI-provided values.
  * Keys are omitted if the flag was not provided by the user.
@@ -104,7 +117,7 @@ export function validateCliArgs(cliArgs) {
     if (value !== undefined && def.validate) {
       const error = def.validate(value);
       if (error) {
-        throw new Error(`Invalid --${def.key}: ${error}`);
+        throw new Error(`Invalid ${flagNameFor(def)}: ${error}`);
       }
     }
   }

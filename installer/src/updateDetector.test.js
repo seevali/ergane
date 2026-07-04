@@ -31,13 +31,41 @@ test('detectUpdate: no manifest → isUpdate false', async () => {
   }
 });
 
-test('detectUpdate: malformed manifest → isUpdate false', async () => {
+test('detectUpdate: malformed manifest → throws a corrupted ManifestError (never silently no-op)', async () => {
   const dir = await makeTempDir();
   try {
     await fs.mkdir(path.join(dir, '.ralph'), { recursive: true });
     await fs.writeFile(path.join(dir, '.ralph', 'manifest.json'), 'not valid json', 'utf8');
-    const result = await detectUpdate(dir);
-    assert.equal(result.isUpdate, false);
+    await assert.rejects(
+      () => detectUpdate(dir),
+      (err) => {
+        assert.equal(err.code, 'corrupted');
+        assert.ok(err.message.includes('corrupted'));
+        return true;
+      },
+    );
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('detectUpdate: same version + no drift → upToDate true', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeManifestFixture(dir, { version: '0.2.0', files: {} });
+    const result = await detectUpdate(dir, { getInstallerVersion: async () => '0.2.0' });
+    assert.equal(result.upToDate, true, 'no version change and no drift is a no-op');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('detectUpdate: version bump → upToDate false', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeManifestFixture(dir, { version: '0.1.0', files: {} });
+    const result = await detectUpdate(dir, { getInstallerVersion: async () => '0.2.0' });
+    assert.equal(result.upToDate, false, 'a version change is real work');
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }

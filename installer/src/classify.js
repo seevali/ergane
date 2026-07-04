@@ -16,6 +16,32 @@ async function checkManifest(dirPath) {
 }
 
 /**
+ * Walk up from a target directory (excluding the target itself) looking for an
+ * ancestor that already contains a Ralph Loop install (`.ralph/manifest.json`).
+ * Used to warn before creating a second, independent nested install.
+ *
+ * @param {string} dirPath - the target directory
+ * @returns {Promise<string|null>} absolute path to the ancestor's manifest, or null
+ */
+export async function findAncestorInstall(dirPath) {
+  let current = path.resolve(dirPath);
+  let parent = path.dirname(current);
+
+  while (parent !== current) {
+    const manifestPath = path.join(parent, '.ralph', 'manifest.json');
+    try {
+      await fs.access(manifestPath);
+      return manifestPath;
+    } catch {
+      // keep walking up
+    }
+    current = parent;
+    parent = path.dirname(current);
+  }
+  return null;
+}
+
+/**
  * Classify a target directory for installer decision-making.
  *
  * @param {string} dirPath - path to target directory (absolute or relative)

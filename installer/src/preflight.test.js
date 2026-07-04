@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { preflight, renderChecklist } from './preflight.js';
+import { preflight, renderChecklist, checkGitIdentity, checkGh } from './preflight.js';
 
 // Convenience factories for commandExists injection
 const allPresent = () => true;
@@ -173,4 +173,42 @@ test('renderChecklist respects NO_COLOR on TTY (no ANSI codes)', async () => {
   assert.ok(!/\x1b\[/.test(out), 'NO_COLOR output should have no ANSI escape codes');
   // Glyphs should still appear (TTY path, just without color)
   assert.ok(out.includes('✓'), 'NO_COLOR TTY should still show glyphs');
+});
+
+// ─── L9: git identity + gh advisory checks ────────────────────────────────────
+
+test('checkGitIdentity: pass when both user.name and user.email are set', () => {
+  const result = checkGitIdentity({
+    readConfig: (key) => (key === 'user.name' ? 'Ada Lovelace' : 'ada@example.com'),
+  });
+  assert.equal(result.status, 'pass');
+  assert.ok(result.message.includes('Ada Lovelace'));
+});
+
+test('checkGitIdentity: warn with exact git config remediation when unset', () => {
+  const result = checkGitIdentity({
+    readConfig: () => { throw new Error('empty ident'); },
+  });
+  assert.equal(result.status, 'warn', 'unset identity is a warning, never a hard fail');
+  assert.ok(result.message.includes('git config --global user.name'), 'gives the exact remediation');
+  assert.ok(result.message.includes('git config --global user.email'));
+});
+
+test('checkGh: informational when gh is missing (points at cli.github.com)', () => {
+  const result = checkGh({ commandExists: () => false });
+  assert.equal(result.status, 'info', 'gh is never a hard fail — issue-workflow only');
+  assert.ok(/--issue/.test(result.message));
+  assert.ok(result.message.includes('cli.github.com'));
+});
+
+test('checkGh: informational, authenticated', () => {
+  const result = checkGh({ commandExists: (c) => c === 'gh', isAuthenticated: () => true });
+  assert.equal(result.status, 'info');
+  assert.ok(/authenticated/i.test(result.message));
+});
+
+test('checkGh: informational, present but not authenticated (gh auth login hint)', () => {
+  const result = checkGh({ commandExists: (c) => c === 'gh', isAuthenticated: () => false });
+  assert.equal(result.status, 'info');
+  assert.ok(/gh auth login/.test(result.message));
 });

@@ -92,6 +92,85 @@ export async function preflight(opts = {}) {
 }
 
 /**
+ * Check whether git has a configured identity (user.name + user.email). The loop
+ * commits after every story, so a missing identity would fail the FIRST commit deep
+ * in a run — surfacing it at install time as a WARN (never a hard fail) is far cheaper.
+ *
+ * @param {object} [opts]
+ * @param {(key: string) => string} [opts.readConfig] - returns the git config value, throws if unset (for testing)
+ * @returns {{status: 'pass'|'warn', message: string}}
+ */
+export function checkGitIdentity(opts = {}) {
+  const readConfig =
+    opts.readConfig ??
+    ((key) => execSync(`git config ${key}`, { stdio: 'pipe' }).toString().trim());
+
+  let name = '';
+  let email = '';
+  try {
+    name = readConfig('user.name');
+    email = readConfig('user.email');
+  } catch {
+    // one or both unset → fall through to warn
+  }
+
+  if (name && email) {
+    return { status: 'pass', message: `git identity: ${name} <${email}>` };
+  }
+  return {
+    status: 'warn',
+    message: [
+      'git identity not set — the loop commits after each story, so the first commit would fail.',
+      '  git config --global user.name "Your Name"',
+      '  git config --global user.email "you@example.com"',
+    ].join('\n'),
+  };
+}
+
+/**
+ * Check `gh` presence + auth. INFORMATIONAL only (never fails): the GitHub CLI is
+ * needed only for the issue-driven workflow (--issue/--write/--issues), consistent
+ * with doctor's gh check.
+ *
+ * @param {object} [opts]
+ * @param {(cmd: string) => boolean} [opts.commandExists]
+ * @param {() => boolean} [opts.isAuthenticated] - (for testing)
+ * @param {string} [opts.platform]
+ * @returns {{status: 'info', message: string}}
+ */
+export function checkGh(opts = {}) {
+  const platform = opts.platform ?? process.platform;
+  const commandExists = opts.commandExists ?? makeCommandChecker(platform);
+
+  if (!commandExists('gh')) {
+    return {
+      status: 'info',
+      message:
+        'gh CLI not found — needed only for the GitHub-issue workflow (--issue/--write/--issues). Install: https://cli.github.com',
+    };
+  }
+
+  let authed;
+  if (opts.isAuthenticated) {
+    authed = opts.isAuthenticated();
+  } else {
+    try {
+      execSync('gh auth status', { stdio: 'pipe' });
+      authed = true;
+    } catch {
+      authed = false;
+    }
+  }
+
+  return {
+    status: 'info',
+    message: authed
+      ? 'gh CLI found and authenticated — GitHub-issue workflow ready (--issue/--write/--issues)'
+      : 'gh CLI found but not authenticated (run: gh auth login) — needed only for --issue/--write/--issues',
+  };
+}
+
+/**
  * Render a preflight results object as a checklist to stdout.
  *
  * @param {object} results - return value from preflight()

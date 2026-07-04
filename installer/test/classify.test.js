@@ -3,11 +3,56 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { classifyTarget } from '../src/classify.js';
+import { classifyTarget, findAncestorInstall } from '../src/classify.js';
 
 async function makeTempDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), 'ralph-classify-'));
 }
+
+async function writeManifestAt(dir) {
+  await fs.mkdir(path.join(dir, '.ralph'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.ralph', 'manifest.json'),
+    JSON.stringify({ version: '0.2.0', files: {} }),
+    'utf8',
+  );
+}
+
+// ─── findAncestorInstall (L11a nested-install guard) ──────────────────────────
+
+test('findAncestorInstall: finds an install in an ancestor directory', async () => {
+  const root = await makeTempDir();
+  try {
+    await writeManifestAt(root);
+    const sub = path.join(root, 'a', 'b');
+    await fs.mkdir(sub, { recursive: true });
+    const found = await findAncestorInstall(sub);
+    assert.equal(found, path.join(root, '.ralph', 'manifest.json'));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('findAncestorInstall: returns null when no ancestor has an install', async () => {
+  const root = await makeTempDir();
+  try {
+    const sub = path.join(root, 'a', 'b');
+    await fs.mkdir(sub, { recursive: true });
+    assert.equal(await findAncestorInstall(sub), null);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('findAncestorInstall: ignores the target directory itself (only ancestors)', async () => {
+  const root = await makeTempDir();
+  try {
+    await writeManifestAt(root); // manifest is IN the target, not an ancestor
+    assert.equal(await findAncestorInstall(root), null);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 
 // ─── Empty directory ──────────────────────────────────────────────────────────
 

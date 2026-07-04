@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hashFile } from './writer.js';
+import { loadManifest, ManifestError } from './manifest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +21,12 @@ async function readInstallerVersion() {
  * update delta: which files are installer-owned vs user-owned, which have been locally
  * modified since the last install, and which are missing from disk.
  *
- * Returns `{ isUpdate: false }` when no manifest is present or the manifest is unreadable.
+ * Returns `{ isUpdate: false }` when no manifest is present. A present-but-corrupted
+ * manifest throws a ManifestError (code 'corrupted') so callers report it honestly
+ * instead of silently downgrading to "already up to date".
+ *
+ * `upToDate` is true when the installed version equals the available version AND no
+ * installer-owned file has drifted AND nothing is missing — the honest no-op state.
  *
  * @param {string} targetDir - absolute path to the target directory
  * @param {object} [opts]
@@ -28,6 +34,7 @@ async function readInstallerVersion() {
  * @param {Function} [opts.log]                 - override console.warn (for tests)
  * @returns {Promise<{
  *   isUpdate: boolean,
+ *   upToDate?: boolean,
  *   installedVersion?: string,
  *   availableVersion?: string,
  *   manifest?: object,
@@ -44,15 +51,13 @@ export async function detectUpdate(targetDir, opts = {}) {
 
   let manifest;
   try {
-    const manifestPath = path.join(targetDir, '.ralph', 'manifest.json');
-    const raw = await fs.readFile(manifestPath, 'utf8');
-    manifest = JSON.parse(raw);
-  } catch {
-    return { isUpdate: false };
-  }
-
-  if (!manifest || typeof manifest !== 'object') {
-    return { isUpdate: false };
+    manifest = await loadManifest(targetDir);
+  } catch (err) {
+    if (err instanceof ManifestError && err.code === 'not-found') {
+      return { isUpdate: false };
+    }
+    // 'corrupted' (and any unexpected error) propagates so the caller can report it.
+    throw err;
   }
 
   const rawVersion = manifest.version;
@@ -90,8 +95,13 @@ export async function detectUpdate(targetDir, opts = {}) {
     }
   }
 
+  const anyDrifted = installerOwned.some((e) => e.isModified);
+  const upToDate =
+    installedVersion === availableVersion && !anyDrifted && missing.length === 0;
+
   return {
     isUpdate: true,
+    upToDate,
     installedVersion,
     availableVersion,
     manifest,

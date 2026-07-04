@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { installBmad } from './bmad.js';
 import { getPackageName, cliInvocation } from './pkg.js';
+import { tryLoadManifest } from './manifest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates', 'loop');
@@ -69,18 +70,16 @@ export function hashString(content) {
 }
 
 /**
- * Load and parse .ralph/manifest.json, or return null if absent/invalid.
+ * Load and parse .ralph/manifest.json for internal conflict/update bookkeeping.
+ * Returns null when absent or unreadable — the "is this dir corrupted?" decision
+ * is made upstream (bin → detectUpdate) so the writer treats any load failure as
+ * "no prior manifest to reconcile against". Uses the shared parser (src/manifest.js).
  * @param {string} targetPath
  * @returns {Promise<object|null>}
  */
 async function loadManifest(targetPath) {
-  try {
-    const manifestPath = path.join(targetPath, '.ralph', 'manifest.json');
-    const content = await fs.readFile(manifestPath, 'utf8');
-    return JSON.parse(content);
-  } catch {
-    return null;
-  }
+  const { manifest } = await tryLoadManifest(targetPath);
+  return manifest ?? null;
 }
 
 /**
@@ -264,6 +263,12 @@ export async function detectConflicts(plan, writeMap) {
 
   for (const [filePath] of writeMap) {
     const fullPath = path.join(targetPath, filePath);
+
+    // .gitignore is never a blocking conflict: buildGitignoreContent() already
+    // produced an append-merge of the user's existing file + a deduped "# Ralph Loop"
+    // section, so writing it preserves everything. A pre-existing .gitignore (which
+    // every real project has) must NOT hard-fail install or demand --force.
+    if (filePath === '.gitignore') continue;
 
     let exists = false;
     try {
@@ -492,6 +497,39 @@ export async function executeWrite(targetPath, approvedMap) {
 
 // ── Phase 5: Write manifest ───────────────────────────────────────────────────
 
+/**
+ * Given the relative file paths about to be written, return the subset of their
+ * ancestor directories that do NOT yet exist under targetPath — i.e. the dirs
+ * this install will actually create. Must be called BEFORE executeWrite (which
+ * does the mkdir). Recording only these lets uninstall prune "only those the
+ * installer created" and never a directory the user made pre-install.
+ *
+ * @param {string} targetPath
+ * @param {string[]} relPaths - relative file paths to be written
+ * @returns {Promise<string[]>} relative dir paths (forward slashes) not yet present
+ */
+export async function computeCreatedDirs(targetPath, relPaths) {
+  const candidates = new Set();
+  for (const relPath of relPaths) {
+    let dir = path.posix.dirname(relPath.replace(/\\/g, '/'));
+    while (dir && dir !== '.' && dir !== '/') {
+      candidates.add(dir);
+      dir = path.posix.dirname(dir);
+    }
+  }
+
+  const created = [];
+  for (const relDir of candidates) {
+    try {
+      await fs.access(path.join(targetPath, relDir));
+      // Already exists → pre-existing, not installer-created. Skip.
+    } catch {
+      created.push(relDir);
+    }
+  }
+  return created;
+}
+
 async function getInstallerVersion() {
   try {
     const pkgPath = path.join(__dirname, '..', 'package.json');
@@ -508,9 +546,11 @@ async function getInstallerVersion() {
  * @param {object} plan - has .targetDir, .classification, .wizardAnswers
  * @param {string[]} writtenFiles - relative paths of files written in Phase 4
  * @param {object|null} [existingManifest] - prior manifest (for update scenarios)
+ * @param {string[]} [createdDirs] - dirs THIS install created (persisted so uninstall
+ *   prunes only installer-created dirs); merged with any prior record.
  * @returns {Promise<object>} the written manifest object
  */
-export async function writeManifest(plan, writtenFiles, existingManifest = null) {
+export async function writeManifest(plan, writtenFiles, existingManifest = null, createdDirs = []) {
   const targetPath = plan.targetDir;
   const version = await getInstallerVersion();
   const now = new Date().toISOString();
@@ -533,11 +573,18 @@ export async function writeManifest(plan, writtenFiles, existingManifest = null)
     };
   }
 
+  // Union prior + newly-created dirs so a re-install over an existing tree keeps
+  // the original record (dirs the first install created but that now pre-exist).
+  const mergedCreatedDirs = [
+    ...new Set([...(existingManifest?.createdDirs ?? []), ...createdDirs]),
+  ];
+
   const manifest = {
     version,
     installedAt: existingManifest?.installedAt ?? now,
     updatedAt: now,
     files,
+    createdDirs: mergedCreatedDirs,
     wizardAnswers: plan.wizardAnswers ?? {},
     targetClass: plan.classification ?? 'empty',
     installedVersion: existingManifest?.version ?? null,
@@ -741,19 +788,26 @@ export async function writeInstall(plan, opts = {}) {
   }
 
   log(`Writing ${approvedMap.size} file(s)...`);
+  // Snapshot which ancestor dirs don't yet exist BEFORE writing, so the manifest
+  // records only the dirs this install creates (uninstall prunes only those).
+  const createdDirs = await computeCreatedDirs(plan.targetDir, [...approvedMap.keys()]);
   const writtenFiles = await executeWrite(plan.targetDir, approvedMap);
   log(`Wrote ${writtenFiles.length} file(s).`);
 
   const existingManifest = await loadManifest(plan.targetDir);
-  const manifest = await writeManifest(plan, writtenFiles, existingManifest);
+  const manifest = await writeManifest(plan, writtenFiles, existingManifest, createdDirs);
 
   log('Installation complete.');
 
   // Run BMAD install step if the plan opts in (skipBmad === false is explicit opt-in;
   // undefined means old/test code path that did not collect this preference).
+  // The BMAD step is best-effort: a failure never aborts the install, but it MUST be
+  // surfaced honestly (the outro banner degrades to "1 step needing attention").
+  let bmadFailed = false;
   if (plan.skipBmad === false) {
-    await installBmadFn({ isTTY: process.stdout.isTTY, log });
+    const bmadResult = await installBmadFn({ isTTY: process.stdout.isTTY, log });
+    bmadFailed = bmadResult?.success === false;
   }
 
-  return { status: 'success', filesWritten: writtenFiles.length, manifest };
+  return { status: 'success', filesWritten: writtenFiles.length, manifest, bmadFailed };
 }

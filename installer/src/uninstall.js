@@ -1,32 +1,28 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { isColorEnabled } from './colors.js';
+import {
+  loadManifest as loadManifestShared,
+  ManifestError,
+  MANIFEST_NOT_FOUND_MESSAGE,
+} from './manifest.js';
 
 /**
- * Load and validate the manifest JSON from manifestPath.
- * Returns the parsed manifest object, or null if the file doesn't exist.
- * Throws if the file exists but is malformed or missing a `files` key.
+ * Compatibility wrapper around the shared manifest loader (src/manifest.js).
+ * Takes a manifest *file* path (legacy signature), returns the parsed manifest,
+ * `null` when the file is absent, and throws (message includes "corrupted") when
+ * present-but-malformed. The single source of truth is src/manifest.js.
  */
 export async function loadManifest(manifestPath) {
-  let raw;
+  const targetDir = path.dirname(path.dirname(manifestPath));
   try {
-    raw = await fs.readFile(manifestPath, 'utf8');
-  } catch {
-    return null;
+    return await loadManifestShared(targetDir);
+  } catch (err) {
+    if (err instanceof ManifestError && err.code === 'not-found') {
+      return null;
+    }
+    throw err;
   }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error('Manifest is corrupted. Cannot safely uninstall.');
-  }
-
-  if (!parsed || typeof parsed !== 'object' || !parsed.files) {
-    throw new Error('Manifest is corrupted. Cannot safely uninstall.');
-  }
-
-  return parsed;
 }
 
 /**
@@ -63,6 +59,59 @@ export async function removeFile(filePath) {
     }
     return { success: false, error: err.message };
   }
+}
+
+/**
+ * Prune directories that the installer created and that are now empty after file
+ * removal. Only removes empty directories, so any directory still holding a
+ * preserved user-owned file is left in place. Never touches `targetDir` itself.
+ *
+ * Contract (spec L1): remove "now-empty directories the installer created (and
+ * only those)". When the manifest records `createdDirs` (the dirs the install
+ * actually brought into existence — see writeManifest), that list is the
+ * AUTHORITATIVE candidate set: a directory the user created before install is
+ * never in it, so a pre-existing empty `docs/` or `scripts/` survives uninstall.
+ * Legacy manifests (written before createdDirs was recorded) pass `undefined`
+ * here; for those we fall back to deriving candidates from the manifest file
+ * paths (best-effort — the pre-createdDirs behavior).
+ *
+ * @param {string} targetDir
+ * @param {string[]} relPaths - every relative file path the manifest listed
+ * @param {string[]} [createdDirs] - dirs the installer created (authoritative when present)
+ * @returns {Promise<string[]>} relative directory paths that were removed
+ */
+export async function pruneEmptyInstallerDirs(targetDir, relPaths, createdDirs) {
+  const dirs = new Set();
+  if (Array.isArray(createdDirs)) {
+    // Authoritative: only consider dirs the installer itself created. An empty
+    // array means the install created no dirs (every needed dir pre-existed) →
+    // prune nothing, honoring "and only those the installer created".
+    for (const dir of createdDirs) {
+      const n = dir.replace(/\\/g, '/');
+      if (n && n !== '.' && n !== '/') dirs.add(n);
+    }
+  } else {
+    // Legacy fallback: derive candidates from manifest file paths.
+    for (const relPath of relPaths) {
+      let dir = path.posix.dirname(relPath.replace(/\\/g, '/'));
+      while (dir && dir !== '.' && dir !== '/') {
+        dirs.add(dir);
+        dir = path.posix.dirname(dir);
+      }
+    }
+  }
+
+  // Deepest first, so child dirs empty out before their parents are checked.
+  const ordered = [...dirs].sort((a, b) => b.split('/').length - a.split('/').length);
+
+  const removed = [];
+  for (const relDir of ordered) {
+    const result = await removeEmptyDir(path.join(targetDir, relDir));
+    if (result.success) {
+      removed.push(relDir);
+    }
+  }
+  return removed;
 }
 
 /**
@@ -180,12 +229,29 @@ export async function uninstall(options, opts = {}) {
   if (manifest === null) {
     return {
       success: false,
-      message: 'No Ralph Loop install found here. (Expected .ralph/manifest.json)',
+      message: MANIFEST_NOT_FOUND_MESSAGE,
     };
   }
 
   // Phase 2: Categorize files
   const { installerOwned, userOwned } = categorizeFiles(manifest.files ?? {});
+
+  // Fail closed BEFORE deleting anything if we'd need to prompt but cannot.
+  // A non-interactive terminal with neither --yes nor --force would otherwise hit
+  // the @clack confirm and crash with a raw TTY-init stack trace mid-delete, leaving
+  // a half-removed, corrupt install. Bail here so the tree is left untouched.
+  const needsPrompt = !force && !yes && userOwned.length > 0;
+  if (needsPrompt && !opts.prompts) {
+    const stdinIsTTY = 'stdinIsTTY' in opts ? opts.stdinIsTTY : process.stdin.isTTY === true;
+    if (!stdinIsTTY) {
+      return {
+        success: false,
+        message:
+          'Uninstall needs an interactive terminal to confirm removing your files.\n' +
+          'Re-run with --yes to keep user-owned files, or --force to remove everything.',
+      };
+    }
+  }
 
   // Phase 3: Remove installer-owned files (excluding .gitignore — handled in phase 3b)
   const errors = [];
@@ -291,6 +357,18 @@ export async function uninstall(options, opts = {}) {
     log('.ralph/ directory is not empty. Leaving it in place.');
   } else {
     log(`.ralph/ directory could not be removed: ${dirResult.reason}`);
+  }
+
+  // Phase 6: Prune now-empty directories the installer created (docs/epics,
+  // scripts/prompts/*, etc.). Only empty dirs go — a dir still holding a preserved
+  // user file survives. This leaves the tree as it was pre-install (modulo user files).
+  const prunedDirs = await pruneEmptyInstallerDirs(
+    targetDir,
+    Object.keys(manifest.files ?? {}),
+    manifest.createdDirs,
+  );
+  for (const relDir of prunedDirs) {
+    log(`${ok} Removed empty directory ${relDir}/`);
   }
 
   // Summary
