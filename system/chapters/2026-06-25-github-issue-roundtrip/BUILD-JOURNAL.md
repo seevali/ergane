@@ -53,4 +53,31 @@ Smoke `tests/idea4-triage-smoke.sh` 10/10; all six pre-existing smokes green; go
 
 ---
 
-*(Sections for issue #3 Confessing PR, issue #4 Worktree-per-Issue, and issue #5 Swarm v1 are appended as each lands.)*
+## Idea 2 / issue #3 — The Confessing PR (landed 2026-07-04, commit `4316c2a`)
+
+### Design decisions
+
+1. **Purity as the testability lever.** `render_pr_body()` reads ONLY the epic, the per-story artifacts (`<id>.md`, `<id>-done.md`), the intake PRD, and `git log` — no `gh`, no globals, no timestamps. That makes the AC "extractable and testable offline (fixture in → expected markdown out)" literal: the smoke builds a throwaway git repo with fixture artifacts and asserts byte-identical renders across runs and zero `gh` invocations during render.
+2. **Guesses come first, and absence is stated.** The "I had to guess" section leads the body (the whole point: route reviewer attention to recorded uncertainty), and when no assumptions were recorded the body says so explicitly — silence would be indistinguishable from "nothing risky here."
+3. **Extraction contract, not free parsing:** guesses are harvested from (a) sections whose heading *ends with* an uncertainty keyword (assumptions / open questions / uncertainty / risks / guesses) and (b) standalone `ASSUMPTION:` / `GUESS:` / `OPEN QUESTION:` lines (colon required). Both anchors were tightened by verification (below).
+4. **One write site, late.** The PR is created at intake with the PRD as body (slice b, untouched); the confessing body lands via a single `update_issue_pr_body()` call in the all-green completion block, immediately before `mark_issue_pr_ready` — so the graduated PR the human is asked to review carries the confessing body, and mid-build churn on the PR body is avoided.
+5. **The body is loop-owned only while draft.** `update_issue_pr_body` checks `isDraft` (an ungated read) and skips once the PR is ready — the footer printed into the body promises exactly this, and a `--write` re-run of a finished issue must not eat a reviewer's edits.
+
+### What verification caught (all fixed before commit)
+
+1. **Missing isDraft guard (ADR auditor):** as first implemented, a re-run would `gh pr edit` an already-ready PR, clobbering human edits and contradicting the body's own footer contract. Fixed with the mark_issue_pr_ready-parity read + a smoke regression check (zero `pr edit` calls when `isDraft=false`).
+2. **Over-broad guess harvesting (edge-case hunter):** a heading merely *containing* "risk" — e.g. `## Risk Mitigations`, a list of *completed* defensive work — poured its bullets into the trust-critical guess section, and any prose bullet starting with the word "guess" matched too. Fixed: heading keywords are end-anchored, standalone labels require a colon.
+3. **Narrative anchor too narrow (edge-case hunter):** the done-summary fallback only recognized `# ` H1 titles; an H2-titled done.md yielded a false "(no implementation summary)". Fixed to any heading level.
+4. **Self-caught by the implementer:** awk's `exit` still runs `END` blocks, so the narrative paragraph printed twice; caught by the smoke's determinism assertion mid-implementation, before any gate ran.
+
+### Outcome
+
+Smoke `tests/idea2-confessing-pr-smoke.sh` 15/15 (14 + the isDraft regression check); all seven pre-existing smokes green; golden byte-identical; the only main() change is the one allowed additive call (+2-line comment) before `mark_issue_pr_ready`.
+
+### Orchestration note (recorded for honesty)
+
+The workflow harness had an args-plumbing fault: the implementer received the spec path as `undefined`. It recovered correctly — located the session's slice specs on disk, cross-checked the chapter's decided build order, and implemented the right spec (Confessing PR). The orchestrator hardened the workflow (literal-fallback spec paths) for the remaining ideas. Worth recording: *the agents' recovery behavior is part of why supervised orchestration with independent verification is trustworthy — but the correct response to a lucky save is to remove the luck.*
+
+---
+
+*(Sections for issue #4 Worktree-per-Issue and issue #5 Swarm v1 are appended as each lands.)*

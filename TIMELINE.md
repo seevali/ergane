@@ -8,6 +8,20 @@ For forward-looking design documents, browse [`system/chapters/`](system/chapter
 
 ---
 
+## [System] The Confessing PR (issue #3) — the trust interface (2026-07-04)
+
+Closed **issue #3 "The Confessing PR"** — the PR body is now *synthesized* from the per-story artifacts the loop already produces, so the reviewer's scarce attention lands on the risky decisions instead of a wall of confident-looking diff ([prd.md §3 Idea 2](system/chapters/2026-06-25-github-issue-roundtrip/prd.md)).
+
+**What the body contains, in order:** an **"⚠️ I had to guess"** section *first* — assumptions and open questions harvested from the intake PRD, story specs, and done-summaries (with per-item source attribution), and when none were recorded, an explicit "none recorded" line rather than silence; then a **story → acceptance-criteria → commit map** (each `### Story N.k` with its ACs and the short hash of its `feat(N.k):` commit); then per-story **narratives** from the done-summaries; then a footer stating the body is loop-owned only until the PR is marked ready.
+
+**How the invariants held:** `render_pr_body()` is a **pure function of on-disk artifacts + `git log`** — no `gh`, no globals, no timestamps, byte-deterministic (the offline smoke asserts two renders are identical and that the `gh` stub records zero calls during render). The single write site, `update_issue_pr_body()`, funnels through `gh_pr_op` (I1), converges on re-run (I2), never merges/closes (I3), and — a verification catch — **skips the edit once the PR is no longer a draft**, so a `--write` re-run of a finished issue can never clobber a human's edits to a ready PR (parity with `mark_issue_pr_ready`'s idempotency read). Wired as one additive call in main()'s all-green completion block, before graduation, so the human reviews a confessing body, not the intake PRD. Safety contract untouched; `--dry-run-prompts` golden byte-identical.
+
+**Verification catches (fixed pre-commit):** the missing isDraft guard above; over-broad guess harvesting (a `## Risk Mitigations` section of *completed* work was being confessed as uncertainty — heading match now end-anchors the keyword, and standalone `ASSUMPTION:` lines require the colon); and the narrative extractor only recognizing H1 titles. The implementer also caught its own awk `exit`-runs-END double-print bug via the smoke's determinism assertion. Smoke 15/15; all seven prior smokes green. Method and details: [BUILD-JOURNAL](system/chapters/2026-06-25-github-issue-roundtrip/BUILD-JOURNAL.md).
+
+[Issue #3 spec](system/chapters/2026-06-25-github-issue-roundtrip/issues/02-confessing-pr.md) | [smoke](system/chapters/2026-06-25-github-issue-roundtrip/tests/idea2-confessing-pr-smoke.sh) | commit `4316c2a`
+
+---
+
 ## [System] Triage Before Toil (issue #2) — the judgment gate before Phase 0 (2026-07-04)
 
 Closed **issue #2 "Triage Before Toil"** — the readiness pre-phase that runs ahead of Phase 0 in Path A (`--issue N`), so the loop *reads* an issue and decides whether it is even buildable **before** spending planning/build tokens on it. Once write-back exists (issue #1), the next-most-expensive failure is the loop confidently building the wrong thing from an underspecified issue; this gate is the cheapest guard against that ([prd.md §3 Idea 4](system/chapters/2026-06-25-github-issue-roundtrip/prd.md)).
