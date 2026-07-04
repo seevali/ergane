@@ -80,4 +80,26 @@ The workflow harness had an args-plumbing fault: the implementer received the sp
 
 ---
 
-*(Sections for issue #4 Worktree-per-Issue and issue #5 Swarm v1 are appended as each lands.)*
+## Idea 3 / issue #4 — Worktree-per-Issue (landed 2026-07-04, commit `6ae7cf6`)
+
+### Design decisions
+
+1. **In-repo worktrees (deviation from the issue body).** The issue's literal `git worktree add ../ralph-issue-N` puts run state *outside* the repo, violating the root `CLAUDE.md` self-containment guardrail and polluting the parent (Metis) tree. Decision: `.ralph/worktrees/issue-N`, inside the repo, gitignored. Side effect: the "artifact seam" AC (planning docs readable from the main tree) is satisfied structurally instead of by symlinks or write-through copies — both of which would have dirtied the main tree's status and broken the *other* AC.
+2. **Re-point, don't thread.** Rather than passing a worktree path through every function, `ensure_issue_worktree()` re-points the run's globals (`REPO_ROOT`, `PROJECT_DIR`, `STORIES_DIR`, epic/PRD paths) and `cd`s in. Every downstream step — Phase 0, story loop, completion greps, `gh` slug resolution — follows automatically, because they already resolve through those globals. `STORIES_DIR` is re-pointed only when it still equals the default (a System-Track env override is respected).
+3. **Crash state is resumable state.** A crashed/interrupted run leaves its tree in place; the next run of the same issue *resumes* it. The reaper handles the genuinely-orphaned case (`git worktree prune` for manually-deleted dirs). Teardown (`worktree remove --force`) fires only on `RALPH_ALL_GREEN=1` + exit 0 — parks, `--plan-only`, crashes, and manual-review exits keep the tree because it may hold uncommitted planning work. `--force` is deliberate: untracked runtime droppings (the PR-URL file) would otherwise block removal, and they are recoverable (below). The branch is never deleted.
+4. **Ordering: worktree → triage → Phase 0.** The tree is created before anything writes files so ALL planning artifacts land in it; triage (which writes no repo files) anchors its ledger to the main root via a new `RALPH_MAIN_ROOT` global.
+5. **PR-URL recovery closes the loop worktree removal opens.** Success teardown discards the untracked `docs/prd/issue-N-pr.txt`; `ensure_issue_pr` now recovers the PR by branch (`gh pr view ralph/issue-N`) before ever creating. Two refinements mattered — see catches 2 and 3.
+
+### What verification caught
+
+1. **Missing `set -e` in the new smoke (ADR auditor, minor):** `set -uo pipefail` — a mandatory-rule violation that could let a broken fixture mask assertion failures. Fixed to full `set -euo pipefail` with the expected-failure capture properly guarded.
+2. **Merged-PR resurrection (edge-case hunter, MAJOR — the catch of the day):** the recovery read was state-agnostic; after a human merges the PR and someone re-runs the issue, recovery would return the *merged* PR's URL, skip creation, and push fresh commits with **no open PR** — invisible work, precisely what the Round Trip exists to prevent. Fixed: recovery selects OPEN PRs only (`--json url,state` + `select(.state=="OPEN")`); a merged/closed PR falls through to a fresh `gh pr create`. The slice-b smoke's stub became state-aware and a regression test proves the fall-through.
+3. **Implementer's own placement correction (recorded as a deviation, accepted):** the spec asked for recovery "before the create path" as an ungated read; placed literally it would have run `gh` even with `--write` off, breaking I1's byte-parity. It sits after the write-off dry-return instead — the spec's intent (idempotent recovery), the ADR's letter (network dark when off).
+
+### Outcome
+
+`idea3-worktree-smoke.sh` 10/10 (real local git fixtures — creation, resume, abort/reaper, forced teardown with droppings, main-tree-on-branch conflict, parity); `slice-b` 10/10 (+2); all others green; golden byte-identical; the only `main()` change is the allowed `RALPH_ALL_GREEN=1` line.
+
+---
+
+*(Section for issue #5 Swarm v1 is appended when it lands.)*

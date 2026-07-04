@@ -8,6 +8,20 @@ For forward-looking design documents, browse [`system/chapters/`](system/chapter
 
 ---
 
+## [System] Worktree-per-Issue (issue #4) — isolation plumbing (2026-07-04)
+
+Closed **issue #4 "Worktree-per-Issue"** — with `--worktree` (Path A only, default off), an issue run executes entirely inside its own `git worktree`, so runs never trample the main working tree, a crashed run's half-built state stays quarantined and resumable, and the Swarm (issue #5) has the isolation it stands on ([prd.md §3 Idea 3](system/chapters/2026-06-25-github-issue-roundtrip/prd.md)).
+
+**One deliberate deviation from the issue spec, worth reading:** the issue body says `git worktree add ../ralph-issue-N` — a *sibling directory outside the repo*. That collides with the repo's oldest guardrail (root `CLAUDE.md`: self-contained, never reference `../` or the parent tree) and would litter the maintainer's parent directory. Worktrees therefore live **inside the repo at `.ralph/worktrees/issue-N`** (`.ralph/` is gitignored runtime state, introduced with issue #2). The artifact-seam AC collapses to a triviality as a bonus: planning artifacts are readable from the main tree at `.ralph/worktrees/issue-N/docs/…` while the main tree's *tracked* status stays clean throughout.
+
+**Mechanics:** `ensure_issue_worktree()` runs before Triage/Phase 0 — prunes stale registrations (the reaper half), creates or **resumes** the tree on `ralph/issue-N` (a crashed tree is resumable state, not garbage), re-points `REPO_ROOT`/`PROJECT_DIR`/`STORIES_DIR`/epic/PRD paths so every downstream step — including completion greps — scopes to the tree automatically, writes a breadcrumb `.info`, and registers the run's only `EXIT` trap: teardown removes the tree **only on a fully-green run** (`RALPH_ALL_GREEN=1`); crashes, parks, `--plan-only`, and manual-review exits all keep the tree (uncommitted plans must never be destroyed). The branch is always kept for review — teardown never deletes it. Logs stay in the main tree (observability outlives the tree).
+
+**The verification catch that mattered (major):** worktree removal discards the untracked PR-URL file, so `ensure_issue_pr` gained branch-based recovery — and the first cut used a state-agnostic `gh pr view <branch>`, which would *resurrect a merged/closed PR*: a re-run after merge would push new commits with **no open PR to review them**, silently. Now constrained to OPEN PRs (a merged PR falls through to a fresh `gh pr create`), with a smoke regression proving it. Also caught: the new smoke missing mandatory `set -e`. With `--worktree` absent, behavior is byte-observably unchanged (parity AC); smokes idea3 10/10, slice-b 10/10; golden byte-identical.
+
+[Issue #4 spec](system/chapters/2026-06-25-github-issue-roundtrip/issues/03-worktree-per-issue.md) | [smoke](system/chapters/2026-06-25-github-issue-roundtrip/tests/idea3-worktree-smoke.sh) | commit `6ae7cf6`
+
+---
+
 ## [System] The Confessing PR (issue #3) — the trust interface (2026-07-04)
 
 Closed **issue #3 "The Confessing PR"** — the PR body is now *synthesized* from the per-story artifacts the loop already produces, so the reviewer's scarce attention lands on the risky decisions instead of a wall of confident-looking diff ([prd.md §3 Idea 2](system/chapters/2026-06-25-github-issue-roundtrip/prd.md)).
