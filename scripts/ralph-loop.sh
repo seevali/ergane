@@ -2535,6 +2535,285 @@ run_triage_phase() {
 }
 # <<< RALPH TRIAGE <<<
 
+# ──── The Confessing PR (issue #3, Idea 2 — the trust interface) ────
+# Synthesise the draft PR's BODY from artifacts the loop already produces, so the PR
+# reads like a careful colleague wrote it. The body opens with an "I had to guess"
+# section (recorded assumptions/open questions, surfaced FIRST — that is where the
+# human's judgment is actually needed), then a story → acceptance-criteria → commit
+# map, then per-story narratives. Wired as ONE body update at completion, right before
+# the draft PR graduates to ready (mark_issue_pr_ready), so the human reviews a
+# confessing body — not the intake PRD ensure_issue_pr created the PR with. See
+# prd.md §3 Idea 2; issue 02-confessing-pr.
+#
+# Invariant mapping (ADR-001):
+#   I1 — --write default-off: the single GitHub WRITE (`gh pr edit --body-file`)
+#        funnels through gh_pr_op; with --write off it is a dry no-op (the body is
+#        still rendered to prove renderability, but nothing is sent).
+#   I2 — idempotency: render_pr_body is a PURE function of on-disk artifacts + `git
+#        log` (no gh, no globals, no timestamps, no $RANDOM), so the same disk state
+#        yields a byte-identical body; `gh pr edit` is naturally idempotent, so a
+#        re-run converges on the same PR body instead of duplicating anything.
+#   I3 — the loop NEVER merges/closes: `gh pr edit` only edits the body.
+#
+# Sourced standalone (alongside the RALPH WRITE GUARDS block, for gh_pr_op) by the
+# offline smoke (tests/idea2-confessing-pr-smoke.sh), so keep self-contained: reference
+# only GITHUB_WRITE, ISSUE_NUMBER, REPO_ROOT, STORIES_DIR, EPIC_FILE, the gh_pr_op
+# helper, git/gh, and log_*.
+# >>> RALPH PR BODY (issue #3) — do not remove the sentinels >>>
+_pr_guesses_from() {
+  # Extract recorded assumptions / open questions from ONE artifact file.
+  #   $1 file   $2 repo-relative path (for source attribution)
+  # Emits `- <text> — _<src>_` lines. awk-only, pure; a missing file is the caller's
+  # concern (it only calls this on files that exist).
+  awk -v src="$2" '
+    function emit(t) {
+      sub(/^[[:space:]]+/, "", t); sub(/[[:space:]]+$/, "", t)
+      if (t != "") print "- " t " — _" src "_"
+    }
+    {
+      line = $0; low = tolower($0)
+      if (line ~ /^#{2,4} /) {
+        # A guess/assumption SECTION heading is ABOUT recorded assumptions / open
+        # questions / risks / uncertainties — the keyword must END the heading text.
+        # Anchoring to the end keeps "Risks" / "Open Questions" / "Recorded
+        # Assumptions" while excluding resolved-work headings whose keyword is a mere
+        # modifier ("Risk Mitigations", "Risk Assessment", "Assumptions Validated"),
+        # so completed actions do not leak into the trust-critical section.
+        htxt = low; sub(/^#{2,4}[[:space:]]*/, "", htxt); sub(/[[:space:]]+$/, "", htxt)
+        if (htxt ~ /(assumptions?|open questions?|uncertaint(y|ies)|risks?|guess(es|ed)?)$/) inblk = 1; else inblk = 0
+        next
+      }
+      # A standalone recorded-assumption LABEL: the keyword must be followed by a COLON
+      # (`ASSUMPTION: …`, `Guess: …`, `Open question: …`) — a label, not a leading verb.
+      # Requiring the colon rejects ordinary imperative prose like "guess the locale …".
+      if (low ~ /^[[:space:]]*[-*>]?[[:space:]]*(assumption|guess|open question):/) {
+        t = line; sub(/^[[:space:]]*[-*>]?[[:space:]]*/, "", t); emit(t); next
+      }
+      if (inblk == 1 && line ~ /^[[:space:]]*[-*] /) {
+        t = line; sub(/^[[:space:]]*[-*] +/, "", t); sub(/^\[[ xX]\][[:space:]]+/, "", t); emit(t)
+      }
+    }
+  ' "$1"
+}
+
+_pr_collect_guesses() {
+  # Gather guesses across all sources in DETERMINISTIC order: PRD, then per story in
+  # epic order (spec, then done). De-duplicates exact-duplicate rendered lines.
+  #   $1 issue   $2 epic   $3 stories-dir   $4 repo-root   $5.. ordered story ids
+  local issue="$1" epic="$2" sdir="$3" root="$4"; shift 4
+  local -a sids=(${@+"$@"})
+  local out="" sid f
+  f="$root/docs/prd/issue-${issue}.md"
+  [[ -f "$f" ]] && out+="$(_pr_guesses_from "$f" "${f#"$root"/}")"$'\n'
+  if [[ ${#sids[@]} -gt 0 ]]; then
+    for sid in "${sids[@]}"; do
+      f="$sdir/${sid}.md";      [[ -f "$f" ]] && out+="$(_pr_guesses_from "$f" "${f#"$root"/}")"$'\n'
+      f="$sdir/${sid}-done.md"; [[ -f "$f" ]] && out+="$(_pr_guesses_from "$f" "${f#"$root"/}")"$'\n'
+    done
+  fi
+  printf '%s\n' "$out" | awk 'NF { if (!seen[$0]++) print }'
+}
+
+_pr_extract_acs() {
+  # Bullet/checkbox lines under the first heading matching (ci) `acceptance criteria`,
+  # read from stdin. Emits `- <text>` lines; nothing if no such heading/bullets.
+  awk '
+    BEGIN { inac = 0 }
+    {
+      line = $0; low = tolower($0)
+      if (inac == 0) {
+        if ((line ~ /^#{1,6} / || line ~ /^\*\*/) && low ~ /acceptance criteria/) inac = 1
+        next
+      }
+      if (line ~ /^#{1,6} / || line ~ /^### Story /) { inac = 0; next }
+      if (line ~ /^[[:space:]]*[-*] /) {
+        t = line; sub(/^[[:space:]]*[-*] +/, "", t); sub(/^\[[ xX]\][[:space:]]+/, "", t)
+        print "- " t
+      }
+    }
+  '
+}
+
+_pr_epic_section() {
+  # The lines of a story's own section inside the epic (### Story sid: … until the
+  # next ### Story or ## heading). $1 epic   $2 story id.
+  awk -v sid="$2" '
+    { if ($0 ~ ("^### Story " sid ":")) { inb = 1; next }
+      if (inb == 1 && ($0 ~ /^### Story / || $0 ~ /^## /)) inb = 0
+      if (inb == 1) print
+    }
+  ' "$1"
+}
+
+_pr_narrative() {
+  # First non-empty paragraph of a `-done.md`: preferring a `## Summary`-matching
+  # heading, else after the FIRST heading of any level. Truncated to 400 chars with an
+  # ellipsis. $1 file. (done.md is Dev-authored free-form — its title may be an H1, H2,
+  # or any level — so the fallback anchors on the first heading, not just `# ` H1.)
+  local f="$1" para=""
+  [[ -f "$f" ]] || return 0
+  # NB: awk's `exit` still runs END, so every flush resets p to avoid double-printing.
+  para="$(awk '
+    BEGIN { c = 0 }
+    { if ($0 ~ /^#{1,6} /) {
+        if (c == 1 && p != "") { print p; p = ""; exit }
+        if (tolower($0) ~ /summary/) { c = 1; p = ""; next }
+        if (c == 1) c = 0
+        next
+      }
+      if (c == 1) {
+        if ($0 ~ /^[[:space:]]*$/) { if (p != "") { print p; p = ""; exit }; next }
+        if (p == "") p = $0; else p = p " " $0
+      }
+    }
+    END { if (p != "") print p }
+  ' "$f" 2>/dev/null || true)"
+  if [[ -z "$para" ]]; then
+    para="$(awk '
+      BEGIN { c = 0; seen = 0 }
+      { if ($0 ~ /^#{1,6} / && seen == 0) { c = 1; seen = 1; next }
+        if (c == 1) {
+          if ($0 ~ /^#{1,6} /)        { if (p != "") { print p; p = ""; exit }; next }
+          if ($0 ~ /^[[:space:]]*$/)  { if (p != "") { print p; p = ""; exit }; next }
+          if (p == "") p = $0; else p = p " " $0
+        }
+      }
+      END { if (p != "") print p }
+    ' "$f" 2>/dev/null || true)"
+  fi
+  [[ -z "$para" ]] && return 0
+  if (( ${#para} > 400 )); then para="${para:0:400}…"; fi
+  printf '%s\n' "$para"
+}
+
+render_pr_body() {
+  # PURE function of on-disk artifacts + `git log` (AC 3/4). Args:
+  #   $1 issue number   $2 epic file   $3 stories dir   $4 repo root
+  # Reads ONLY those files + `git -C "$4" log`. NO gh, no globals, no timestamps, no
+  # $RANDOM — same disk state ⇒ byte-identical output. Emits the PR body on stdout.
+  local issue="$1" epic="$2" sdir="$3" root="$4"
+  local -a sids=() stitles=()
+  local hline sid title
+  while IFS= read -r hline; do
+    [[ -z "$hline" ]] && continue
+    sid="$(sed -E 's/^### Story ([0-9]+\.[0-9]+):.*/\1/' <<<"$hline")"
+    title="$(sed -E 's/^### Story [0-9]+\.[0-9]+:[[:space:]]*//' <<<"$hline")"
+    sids+=("$sid"); stitles+=("$title")
+  done < <(grep -E "^### Story ${issue}\.[0-9]+:" "$epic" 2>/dev/null || true)
+  local k="${#sids[@]}"
+
+  # ── Header ──
+  printf 'Closes #%s.\n\n' "$issue"
+  printf 'The Ralph Loop built this from issue #%s in %s stories.\n\n' "$issue" "$k"
+
+  # ── "I had to guess" — the trust interface, always FIRST (AC 1: never silently empty) ──
+  printf '## ⚠️ I had to guess\n\n'
+  local guesses
+  guesses="$(_pr_collect_guesses "$issue" "$epic" "$sdir" "$root" ${sids[@]+"${sids[@]}"})"
+  if [[ -n "$guesses" ]]; then
+    printf '%s\n\n' "$guesses"
+  else
+    printf '_No assumptions or open questions were recorded in the planning or story artifacts. Treat confident-looking sections with normal skepticism._\n\n'
+  fi
+
+  # ── Stories → acceptance criteria → commits (AC 2) ──
+  printf '## Stories → acceptance criteria → commits\n\n'
+  local i hashes cline h acs
+  for ((i = 0; i < k; i++)); do
+    sid="${sids[$i]}"; title="${stitles[$i]}"
+    printf '### %s — %s\n\n' "$sid" "$title"
+    hashes="$(git -C "$root" log --all --pretty='%h %s' 2>/dev/null \
+      | awk -v pfx="feat(${sid}):" '{ h = $1; rest = substr($0, length($1) + 2); if (substr(rest, 1, length(pfx)) == pfx) print h }' || true)"
+    if [[ -n "$hashes" ]]; then
+      cline=""
+      while IFS= read -r h; do [[ -z "$h" ]] && continue; cline+="\`$h\` "; done <<<"$hashes"
+      printf 'Commit: %s\n\n' "${cline% }"
+    else
+      printf 'Commit: _(not yet committed)_\n\n'
+    fi
+    acs="$(cat "$sdir/${sid}.md" 2>/dev/null | _pr_extract_acs || true)"
+    [[ -z "$acs" ]] && acs="$(_pr_epic_section "$epic" "$sid" | _pr_extract_acs || true)"
+    if [[ -n "$acs" ]]; then
+      printf '%s\n\n' "$acs"
+    else
+      printf '_(no acceptance criteria recorded)_\n\n'
+    fi
+  done
+
+  # ── Story narratives ──
+  printf '## Story narratives\n\n'
+  local narr
+  for ((i = 0; i < k; i++)); do
+    sid="${sids[$i]}"; title="${stitles[$i]}"
+    printf '### %s — %s\n\n' "$sid" "$title"
+    narr="$(_pr_narrative "$sdir/${sid}-done.md")"
+    [[ -z "$narr" ]] && narr='_(no implementation summary)_'
+    printf '%s\n\n' "$narr"
+  done
+
+  # ── Footer ──
+  printf -- '---\n\n'
+  printf '_This body is generated by the Ralph Loop ("Confessing PR", prd.md §3 Idea 2) — regenerated deterministically from per-story artifacts at completion. The PR body is loop-owned until the PR is marked ready; edits above this line may be overwritten before then._\n'
+}
+
+update_issue_pr_body() {
+  # Gated writer: replace the draft PR's body with the freshly rendered confessing body.
+  # Best-effort — always returns 0 so a body hiccup never fails the build. Idempotent
+  # (I2): same artifacts ⇒ same body ⇒ `gh pr edit` converges, never duplicates.
+  # Human-edit safety (parity with mark_issue_pr_ready): the body is loop-owned ONLY
+  # while the PR is a draft (render_pr_body's footer promises exactly this). Once the PR
+  # is no longer a draft — already graduated to ready-for-review — a re-run SKIPS the
+  # edit so human review edits to the ready body are never clobbered.
+  local pr_file="$REPO_ROOT/docs/prd/issue-${ISSUE_NUMBER}-pr.txt"
+  local body_file; body_file="$(mktemp)"
+  render_pr_body "$ISSUE_NUMBER" "$EPIC_FILE" "$STORIES_DIR" "$REPO_ROOT" > "$body_file"
+
+  # ── --write OFF: dry no-op. Render anyway (proves renderability), emit the intended
+  #    write through the guarded helper (logs [dry] …), touch nothing (mirrors slice b) ──
+  if [[ "${GITHUB_WRITE:-0}" != "1" ]]; then
+    gh_pr_op pr edit "ralph/issue-${ISSUE_NUMBER}" --body-file "$body_file"
+    log_info "[pr] dry-run: PR body not updated (enable with --write)"
+    rm -f "$body_file"
+    return 0
+  fi
+
+  # ── --write ON: read the recorded PR URL (a LOCAL read, like mark_issue_pr_ready).
+  #    Missing/empty → best-effort skip; updating never fails the build. ──
+  if [[ ! -s "$pr_file" ]]; then
+    log_warn "[pr] no recorded PR URL ($pr_file) — skipping body update (best-effort)"
+    rm -f "$body_file"
+    return 0
+  fi
+  local url; url="$(head -n1 "$pr_file")"
+
+  # Human-edit safety + idempotency (parity with mark_issue_pr_ready): an UNGATED read
+  # of the PR's draft state (`gh pr view` is a READ). The body is loop-owned only while
+  # the PR is a draft; once it is ready-for-review (already graduated — e.g. a --write
+  # re-run of a finished issue) human review edits must NOT be clobbered, so skip the
+  # edit. A 404 (PR gone) → best-effort skip. Zero writes on the ready PR ⇒ still
+  # I2-idempotent (a re-run converges to no-op instead of overwriting).
+  local is_draft
+  if ! is_draft="$(gh pr view "$url" --json isDraft -q .isDraft 2>/dev/null)"; then
+    log_warn "[pr] recorded PR not found ($url) — skipping body update (best-effort)"
+    rm -f "$body_file"
+    return 0
+  fi
+  if [[ "$is_draft" != "true" ]]; then
+    log_info "[pr] PR already ready-for-review ($url) — body no longer loop-owned, skipping (idempotent)"
+    rm -f "$body_file"
+    return 0
+  fi
+
+  if gh_pr_op pr edit "$url" --body-file "$body_file"; then
+    log_success "[pr] PR body updated to the confessing body: $url"
+  else
+    log_error "[pr] gh pr edit failed for $url — continuing"
+  fi
+  rm -f "$body_file"
+  return 0
+}
+# <<< RALPH PR BODY <<<
+
 # ════════════════════════════════════════════════════════════════
 # Main Loop
 # ════════════════════════════════════════════════════════════════
@@ -3124,6 +3403,9 @@ SALVAGE_DONE
     # `gh pr ready` only — never merge/close (I3); idempotent (skips an already-ready PR);
     # a dry no-op with --write off. Step 5's "final linking comment" is the existing
     # `upsert_issue_comment done` below (its 🟢 body links the PR) — NO second comment.
+    # Confessing PR (issue #3, Idea 2): upgrade the PR body to the synthesised body
+    # while the PR is still loop-owned (draft) — BEFORE ready. Dry no-op with --write off.
+    update_issue_pr_body
     mark_issue_pr_ready
     upsert_issue_comment done
     # Slice d (issue #1): all stories green → terminal ralph:done (single edit, removes
