@@ -1,0 +1,56 @@
+# Build Journal — how Ideas 2–5 of this chapter were built (2026-07-04)
+
+**Status:** living document, opened 2026-07-04, updated as each idea lands.
+**What this is:** the narrative + decision record of the build sessions that implemented this chapter's remaining ideas after issue #1. The [PRD](prd.md) says *what and why*; the [ADR](adr-001-github-as-shared-mutable-state.md) pins the invariants; this file records *how the work actually happened*, what was decided along the way, and what the verification caught. It exists so a fresh reader (any LLM, any provider, no conversation history — file system only) can reconstruct the journey and its reasoning.
+
+> **Cold-start note.** "The loop" is `scripts/ralph-loop.sh` at the repo root — a Bash
+> orchestrator that builds software one story per fresh `claude -p` process. "Path A"
+> is its `--issue N` mode (GitHub issue → PRD/epic/stories → build). This chapter
+> (see [README.md](README.md)) planned five ideas; **issue #1 "The Round Trip"** was
+> hand-built on 2026-06-26 (see the repo-root `TIMELINE.md` entry of that date).
+> This journal covers the remaining four, built in order **#2 Triage → #3 Confessing
+> PR → #4 Worktree → #5 Swarm v1** on 2026-07-04. (Chapter "Idea" numbers and GitHub
+> issue numbers differ: Idea 4 = issue #2, Idea 2 = issue #3, Idea 3 = issue #4,
+> Idea 5 = issue #5 — see prd.md §9 traceability.)
+
+---
+
+## The build method: supervised multi-agent orchestration
+
+Issue #1 was built *by hand* (a human-supervised Claude session editing the script directly). Ideas 2–5 were built by a third method — neither by hand nor by the loop:
+
+- **Why not by the loop (dogfooding)?** ADR-002 (`../../design/adr-002-orchestrator-runtime.md`): the loop cannot safely modify the script it is executing mid-run. Dogfooding remains this chapter's *validation* plan (a live `--write`-on run against a real issue), not its build plan — exactly as prd.md §6 prescribes.
+- **What instead:** a single orchestrating agent session (Claude Code, 2026-07-04) that (1) read the chapter docs and the full loop script, (2) made the cross-cutting design decisions and wrote a **detailed slice spec per idea** (inlined below per idea), then (3) ran, per idea, a pipeline of specialist sub-agents:
+  1. **Implementer** — one agent, following the slice spec verbatim against the repo, required to keep every mechanical gate green before finishing.
+  2. **Two parallel adversarial reviewers** — an *ADR-invariant auditor* (hunting I1/I2/I3 violations, safety-contract touches, spec deviations) and a *bash edge-case hunter* (set -euo pipefail hazards, quoting, exit-code semantics, and whether the new smoke would actually fail on regression).
+  3. **Fixer** — verifies each finding against the code (reviewers can be wrong), fixes real ones, re-runs all gates.
+  4. **Orchestrator commit** — the orchestrating session independently re-ran every gate, audited the diff hunk map against the spec's allowed regions, spot-read the new code, then committed. One commit per idea, `feat(roundtrip): #N …`.
+- **The mechanical gates** (unchanged from issue #1's discipline): `bash -n` on both loop scripts; every offline smoke under [`tests/`](tests/) (they stub `gh`, never touch the network); and the `--dry-run-prompts` **byte**-diff against `tests/dry-run-prompts.golden` (the prompt-cache stability gate).
+
+This method is worth recording because it is the repo's first use of *fan-out verification* on System Track work: independent adversarial reviewers with different lenses, run before every commit, with their findings and dispositions logged here.
+
+---
+
+## Idea 4 / issue #2 — Triage Before Toil (landed 2026-07-04, commit `9f070ae`)
+
+### Design decisions (made by the orchestrator, before implementation)
+
+1. **The classifier is deterministic bash, not an LLM.** The issue's AC reads "the classification is deterministic given the issue content." An LLM scorer cannot promise that; a pure bash scoring function can, and it is offline-testable. The scoring: +2 body ≥ 140 chars (+1 more ≥ 400), +2 markdown structure (heading/list/checkbox), +2 acceptance/expected/criteria/repro-style signal words (word-boundary matched — see finding 2 below), +1 title ≥ 20 chars, −3 question-shaped title; ≥ 5 ⇒ `ready`, else `needs-info`. Label short-circuits first: `roadmap` ⇒ `excluded`, `wontfix`/`duplicate`/`invalid` ⇒ `wontfix-candidate`. A future LLM triage persona would sit *on top of* this gate, not replace it.
+2. **Stage labels join one namespace.** `ralph:ready` / `ralph:needs-triage` / `ralph:blocked` were added to `RALPH_STATUS_LABELS` (4 → 7) rather than forming a second axis, preserving the "exactly ONE `ralph:` label per issue" projection and reusing `set_issue_label`'s single-edit atomic transition (I2). Consequence: promoting to `ralph:ready` and then starting the build (`ralph:building`) consumes the ready label — its persistence matters for the queue-scan case (issue #5), where promoted-but-not-yet-built is exactly the state scanned for.
+3. **The gate gates even with `--write` off.** Labels/comments go dry (I1), but an unready issue still does not build. Rationale: classification is content-based; whether the network is dark should not change *what the loop is willing to build*. The explicit bypass is `--triage never`; `--triage always` re-scores an already-promoted issue.
+4. **`excluded` (roadmap) writes nothing at all** — no comment, no label. The loop must not touch its own planning issues (prd.md §6's dogfooding-recursion guard). Promotion of a roadmap issue is a human act: add `ralph:ready`.
+5. **Measurability = a local ledger.** Every decision appends `epoch⟨tab⟩issue⟨tab⟩classification` to `.ralph/triage-ledger.tsv` (a new gitignored `.ralph/` runtime-state directory that later ideas also use). Triage precision (prd.md §7: % of `ready` issues that reach a mergeable PR) is computed offline from ledger + GitHub; no automation shipped, deliberately.
+6. **Parking semantics reuse issue #1's vocabulary:** triage stops are `exit 2` ("parked, human needed"), mirroring `phase0_park`, with next-step guidance in the message.
+
+### What verification caught (both fixed before commit)
+
+1. **False-green smoke (edge-case hunter):** the new offline smoke sourced the functions under test with `set +e`, so an errexit regression in the exact shell mode the live loop runs under (`set -euo pipefail`) would never fail the smoke. Fixed: the smoke's subshells now run `set -euo pipefail`, same as the loop.
+2. **Substring keyword promotion (edge-case hunter):** readiness signals used substring matches — `repro` matched "reprogram", `goal` matched "goalkeeper" — so keyword-containing but underspecified issues could score `ready` and be built. Since a false *positive* (build the wrong thing) is precisely the failure this gate exists to prevent, the signal regexes were tightened to word-boundary matching, and the smoke's fixture table gained the boundary case.
+
+### Outcome
+
+Smoke `tests/idea4-triage-smoke.sh` 10/10; all six pre-existing smokes green; golden byte-identical; zero diff hunks in the protected regions (`run_claude()` → `run_intake_phase()`, and `main()`).
+
+---
+
+*(Sections for issue #3 Confessing PR, issue #4 Worktree-per-Issue, and issue #5 Swarm v1 are appended as each lands.)*
