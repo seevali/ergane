@@ -85,6 +85,7 @@ function buildNonInteractivePlan(targetDir, classification, cliAnswers, log = co
     'Will add .gitignore entries',
     addNpmScripts ? 'Will add npm scripts' : 'No npm script changes',
     skipBmad ? 'Skipping BMAD install' : 'Will install BMAD modules (core, bmm)',
+    'Cost: the loop calls the Anthropic API — a small story typically costs cents to a few dollars; cap it with BUDGET_PER_STORY_USD',
   ];
 
   log('[non-interactive] Installing with defaults...');
@@ -280,12 +281,12 @@ export async function runWizard(targetDir, classification, preflightResults, opt
           {
             value: 'scaffold',
             label: 'Start with a template PRD and epic (recommended)',
-            hint: 'Includes comments explaining the format',
+            hint: 'PRD = a short product-requirements doc; epic = a list of build stories. Includes comments explaining the format.',
           },
           {
             value: 'existing',
             label: 'Point to an existing PRD and epic',
-            hint: 'Must follow the ### Story X.Y: Title format',
+            hint: 'PRD = product-requirements doc; epic = story list. Must follow the ### Story X.Y: Title format.',
           },
         ],
         initialValue: 'scaffold',
@@ -345,6 +346,7 @@ export async function runWizard(targetDir, classification, preflightResults, opt
       addGitignoreEntries ? 'Will add .gitignore entries' : 'No .gitignore changes',
       addNpmScripts ? 'Will add npm scripts' : 'No npm script changes',
       installBmadStep ? 'Will install BMAD modules (core, bmm)' : 'Skipping BMAD install',
+      'Cost: the loop calls the Anthropic API — a small story typically costs cents to a few dollars; cap it with BUDGET_PER_STORY_USD',
     ];
 
     console.log('\n' + (isColorEnabled(colorOpts) ? pc.gray('Plan summary:') : 'Plan summary:'));

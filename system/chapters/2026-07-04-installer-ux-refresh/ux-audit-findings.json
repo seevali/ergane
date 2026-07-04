@@ -1,0 +1,291 @@
+[
+ {
+  "findings": [
+   {
+    "title": "The ONE next command the outro promises fails immediately on a fresh install",
+    "severity": "blocker",
+    "where": "src/outro.js:22 (\"2. Start your first loop: bash .../scripts/ralph-loop.sh\") \u2192 installed scripts/ralph-loop.sh defaults",
+    "evidence": "After `install --yes` into an empty dir, running the exact command the outro hands over produces: `Error: Project directory not found: .../newproject/src`. The installer configured appDir=src but never created a src/ dir, and the loop defaults to `PROJECT_DIR_ARG=\"src\"`, `PRD_FILE=\"docs/prd.md\"`, `EPIC_FILE=\"docs/epics/exchange-rates-dashboard.md\"` \u2014 none of which exist (scaffold created docs/epics/project-prd.md + project-stories.md, no src/, no docs/prd.md).",
+    "suggestion": "The first-success moment must not error. Either scaffold an empty src/ and point the loop's PRD/epic defaults at the files that were actually scaffolded, or make the outro's step 2 a guided command that names the scaffolded PRD/epic. Critically, insert an explicit \"fill in docs/epics/project-prd.md before you loop\" step first \u2014 the scaffolded PRD is all `<!-- TODO -->` placeholders (\"My project does...\"), so even a fixed command would loop against an empty spec. Right now nothing tells a newcomer they must author the PRD before running."
+   },
+   {
+    "title": "doctor/update commands are literally uncommandable \u2014 `<package>` placeholder never substituted",
+    "severity": "blocker",
+    "where": "src/outro.js:28-29; templates/loop/GETTING-STARTED.md:96,132,149",
+    "evidence": "Outro prints: `Tip: Use 'npx <package> doctor'` and `'npx <package> update'`. GETTING-STARTED repeats `npx <package> update` / `npx <package> doctor`. The literal string `<package>` ships to the user. package.json name is `@seevali/ralph-loop`, so the real command would be `npx @seevali/ralph-loop doctor` \u2014 but a newcomer has no way to know that. Every troubleshooting/update path in the guide dead-ends.",
+    "suggestion": "Substitute the real bin name at print time (read package.json `name`), e.g. `npx @seevali/ralph-loop doctor`. This string is also the entire \"how do I validate my install\" and \"how do I update\" story, so the placeholder silently breaks the whole lifecycle UX."
+   },
+   {
+    "title": "BMAD install fails, yet banner says \"installed successfully\" and the printed manual fix is identically broken",
+    "severity": "major",
+    "where": "install --yes output; src/writer.js BMAD invocation; src/outro.js:15",
+    "evidence": "Install output: `BMAD install error: ... error: unknown option '--artifact-folder'` immediately followed by `\u2713 Ralph Loop installed successfully!`. The remediation it prints \u2014 `npx bmad-method install --modules core,bmm --tools claude-code --output-folder docs --artifact-folder docs --memory-folder docs/_bmad/_memory` \u2014 contains the same `--artifact-folder` flag, so copy-pasting it fails the same way. bmad-method@6.10 no longer accepts that flag.",
+    "suggestion": "Detect the BMAD failure and (a) soften the success banner to \"installed (BMAD step failed \u2014 see below)\", and (b) print a manual command that actually works with the resolved bmad-method version. A remediation instruction that reproduces the exact failure is worse than none \u2014 the newcomer will conclude the tool is broken."
+   },
+   {
+    "title": "Nothing warns that running the loop spends real money before it happens",
+    "severity": "major",
+    "where": "wizard.js intro (lines 188-198); templates/loop/GETTING-STARTED.md; src/outro.js",
+    "evidence": "Grep of src/ and templates/ finds no cost/token/money/billing warning copy. The wizard intro only says the loop runs \"Claude Code to build your app story by story.\" The installed loop defaults to `MAX_ITERATIONS=50` with `BUDGET_PER_INVOCATION_USD=\"\"` and `BUDGET_PER_STORY_USD=\"\"` (both empty = no cap). So a newcomer's first `bash scripts/ralph-loop.sh` can launch an uncapped 50-iteration run of paid Opus/Sonnet/Haiku calls with zero prior warning.",
+    "suggestion": "Before the first loop, state plainly that the loop makes paid Anthropic API calls and roughly what a run costs, and surface the budget knobs (BUDGET_PER_STORY_USD) as the safe throttle. The task explicitly asks: \"does anything explain what will cost money before it happens?\" \u2014 currently no."
+   },
+   {
+    "title": "Outro step 4 and the guide tell you to cat a sprint-status file that doesn't exist",
+    "severity": "minor",
+    "where": "src/outro.js:24; templates/loop/GETTING-STARTED.md:53-61,147",
+    "evidence": "Outro: `4. Check sprint status: cat .../docs/sprint-status.yaml`. `ls docs/sprint-status.yaml` after install \u2192 `No such file or directory` (never scaffolded). GETTING-STARTED hedges: \"location and format depend on your setup; typically docs/sprint-status.yaml or similar\" \u2014 unactionable vagueness for someone who has never run the loop.",
+    "suggestion": "Either scaffold a placeholder sprint-status file or reword to \"after your first loop run, a sprint-status file appears at docs/sprint-status.yaml.\" Telling a fresh user to cat a nonexistent file on step 4 undermines trust in the whole checklist."
+   },
+   {
+    "title": "GETTING-STARTED misdescribes how the loop runs and points at variables that don't exist",
+    "severity": "minor",
+    "where": "templates/loop/GETTING-STARTED.md:13-18, 83-84",
+    "evidence": "Guide says the loop will \"1. Present a wizard asking for your task/story details\" \u2014 the installed ralph-loop.sh is a non-interactive orchestrator that reads epic files, not an interactive wizard. Guide's customization section says edit `MODEL_SELECTOR` (grep of installed script: NOT FOUND \u2014 it uses MODEL_SM/MODEL_DEV/MODEL_REVIEW) and says `MAX_ITERATIONS` \"default: 1\" when the installed script sets `MAX_ITERATIONS=50`.",
+    "suggestion": "Align the guide with the actual script: the loop is non-interactive and reads docs/epics/*, the model knobs are MODEL_SM/DEV/REVIEW, and MAX_ITERATIONS defaults to 50. A newcomer following these instructions will hunt for a wizard and a variable that aren't there."
+   },
+   {
+    "title": "The onboarding teaches none of the headline capabilities the loop now ships",
+    "severity": "minor",
+    "where": "templates/loop/GETTING-STARTED.md (whole doc); installed scripts/ralph-loop.sh",
+    "evidence": "GETTING-STARTED covers only single-iteration start/stop/logs/update. It never mentions issue intake (--issue), write-back (--write), the --triage gate, --worktree isolation, the --issues swarm, or scripts/ralph-watch.sh (dashboard/brake). The installed loop script's usage/flags likewise show no --issue/--write/--triage/--worktree and ralph-watch.sh is absent from the scaffold. A newcomer who found the project for its issue-native/swarm story sees no path to any of it.",
+    "suggestion": "Once templates are refreshed, the guide needs a section that names these entry points and the ONE command to try each. Flagged per the brief's ask to judge whether the installed experience teaches/ships the new features \u2014 today it teaches none."
+   },
+   {
+    "title": "Outro next-steps use long absolute paths instead of a cd-and-relative flow",
+    "severity": "polish",
+    "where": "src/outro.js:21-27",
+    "evidence": "Every step is prefixed with the full target path, e.g. `cat /tmp/claude-1000/.../newproject/GETTING-STARTED.md` and `bash /tmp/.../newproject/scripts/ralph-loop.sh`. When installing into `.` it prints `current directory` but with an explicit --directory it emits unwieldy absolute paths.",
+    "suggestion": "Lead with `cd <project>` then show short relative commands (`cat GETTING-STARTED.md`, `bash scripts/ralph-loop.sh`). Copy-pasting a 120-char tmp path per step is friction and hides the actual command."
+   }
+  ],
+  "delights": [
+   "Preflight runs first and renders a clear per-dependency checklist (node/git/jq/claude/bash) with pass/fail \u2014 a newcomer sees missing prerequisites before anything is written.",
+   "Non-interactive mode prints a readable plan summary (target dir, app dir, checkpoint, stack, task source, retries, tokens, what it will add) BEFORE writing any files \u2014 no surprises.",
+   "The wizard intro explicitly reassures: \"Press Enter to accept any default, or Ctrl-C to cancel (zero changes made)\" \u2014 safe, low-anxiety defaults framing (wizard.js:191-196).",
+   "Scaffolded PRD/stories/conventions files carry excellent inline TEACHING COMMENTs that define PRD, epic, story, FR-IDs, and the \"### Story X.Y\" format \u2014 directly onboarding someone who has never heard of BMAD/PRD/epics.",
+   "BMAD failure is non-fatal: the install still completes and the loop files are written, rather than aborting the whole setup on one optional step.",
+   "A real lifecycle exists \u2014 manifest.json with installer-owned vs user-owned checksums, plus doctor/update/uninstall with keep/take/backup conflict handling \u2014 a thoughtful safe-by-design model that a fix must preserve.",
+   "The task-source select offers a \"(recommended)\" template option with a hint explaining the required story format, guiding newcomers to the safe path (wizard.js:276-293)."
+  ]
+ },
+ {
+  "findings": [
+   {
+    "title": "Non-interactive uninstall crashes with a raw Node stack trace AND leaves a half-deleted, corrupt install",
+    "severity": "blocker",
+    "where": "src/uninstall.js:242 (clack confirm with no TTY guard); reproduced via `ralph uninstall -d <dir>` piped/no-TTY",
+    "evidence": "After printing `\u2713 Removed \u2026` for all 11 installer-owned files, it hit the user-owned prompt and threw:\n`SystemError [ERR_TTY_INIT_FAILED]: TTY initialization failed \u2026 at uninstall (\u2026/src/uninstall.js:242) \u2026 Node.js v24.14.0` (exit 1). The dir was left with installer files gone but `.ralph/manifest.json` still present; a follow-up `doctor` then reported `11 check(s) failed` (`Required file missing: scripts/prompts/\u2026`). The install is now unusable with no recovery hint.",
+    "suggestion": "Mirror the wizard's guard (wizard.js:173 throws a friendly 'Use --yes for non-interactive mode'): before the confirm prompt, if `!process.stdin.isTTY` and neither --yes nor --force, exit with an actionable message. Ideally also make uninstall atomic (or remove the manifest last only on full success) so a mid-flow abort never leaves a corrupt tree."
+   },
+   {
+    "title": "Every existing project (which has a .gitignore) hard-fails install and is told to use --force, whose message sounds destructive \u2014 but the actual write is a safe append",
+    "severity": "major",
+    "where": "src/writer.js:92-106 (getOwnership treats .gitignore as installer-owned) + :414-418 conflict message; reproduced installing into a git project with a `.gitignore`",
+    "evidence": "`install --yes` into a normal project aborted: `Conflicts detected \u2014 cannot proceed without --force:\n  .gitignore: file-exists-no-manifest\n\nRe-run with --force to overwrite installer-owned files\u2026`. Yet the wizard promised 'existing project. I'll add Ralph Loop files without touching your code', and after --force the .gitignore was actually preserved+appended (kept `node_modules/`, added a `# Ralph Loop` section). So the common case blocks by default, and the fix it names ('--force \u2026 overwrite') scares users about clobbering their gitignore when the operation is non-destructive.",
+    "suggestion": "Since buildGitignoreContent is append-only/idempotent, don't treat an existing .gitignore as a blocking conflict \u2014 allow the append without --force. If a gate is kept, change the message to say the gitignore is appended, not overwritten."
+   },
+   {
+    "title": "Literal `npx <package>` placeholder in the post-install Tip and GETTING-STARTED \u2014 the primary 'what do I run next' commands are un-runnable",
+    "severity": "major",
+    "where": "src/outro.js:28-29 and templates/loop/GETTING-STARTED.md:96,132,149",
+    "evidence": "Outro prints: `\ud83d\udca1 Tip: Use 'npx <package> doctor' \u2026  Use 'npx <package> update' \u2026`. GETTING-STARTED repeats `npx <package> update` / `npx <package> doctor`. The real package is `@seevali/ralph-loop` (package.json). A newcomer copy-pasting these gets `npm error 404 <package>`.",
+    "suggestion": "Substitute the real bin/package name (`ralph \u2026` or `npx @seevali/ralph-loop \u2026`) into the outro strings and template on write, the way APP_DIR/CHECKPOINT_COMMAND are already substituted."
+   },
+   {
+    "title": "The post-install 'Next steps' point at files that don't exist yet \u2014 steps 3/4/5 error immediately if followed",
+    "severity": "major",
+    "where": "src/outro.js:22-27; verified against installed tree",
+    "evidence": "Outro lists `3. tail -f \u2026/scripts/logs/latest.log`, `4. cat \u2026/docs/sprint-status.yaml`, `5. ls \u2026/docs/_bmad/_memory/`. Directly after install: `ls docs/sprint-status.yaml` \u2192 No such file; `scripts/logs/` \u2192 No such file; `docs/_bmad/_memory/` \u2192 No such file (only created if BMAD succeeds, which it didn't). The very first success moment hands the user three commands that print 'No such file or directory'.",
+    "suggestion": "Only list artifacts that exist at install time, or annotate them as 'created after your first loop run', or create empty `scripts/logs/` and a placeholder sprint-status so the commands succeed."
+   },
+   {
+    "title": "BMAD install fails for everyone, and the suggested manual recovery command is the exact command that just failed",
+    "severity": "major",
+    "where": "install flow BMAD step; observed on `install --yes --force`",
+    "evidence": "`BMAD install error: error: unknown option '--artifact-folder'` then `Run this command to install manually:\n  npx bmad-method install \u2026 --artifact-folder docs --memory-folder \u2026`. The recovery command still contains `--artifact-folder`, so pasting it fails identically. (Installed BMAD no longer supports that flag.)",
+    "suggestion": "Drop/replace the unsupported flags to match the installed bmad-method version, and make the manual-recovery command a known-good invocation (test it before printing it)."
+   },
+   {
+    "title": "Doctor flags user-customized project-conventions.md as a FAILURE \u2014 contradicting the outro that tells users to edit it \u2014 and it never clears",
+    "severity": "major",
+    "where": "src/doctor.js:60-84 (checksum check) vs src/outro.js:32-34; and updateDetector keeps user file without re-syncing manifest checksum",
+    "evidence": "Outro says `\u26a0\ufe0f Review your customizations: docs/project-conventions.md`. After appending one line, `doctor` reports `\u2717 File modified: docs/project-conventions.md (manifest checksum mismatch)` \u2192 `1 check(s) failed` (exit 1). Re-running `install`/`update` keeps the user version (`Keeping (user-modified): docs/project-conventions.md`) but does NOT update the stored checksum, so doctor keeps failing on the file the user was invited to edit \u2014 permanently.",
+    "suggestion": "Treat divergence in intentionally-editable files as informational (not a red \u2717/failure), and/or re-sync the manifest checksum when the update 'keep' path accepts a user-modified installer file so doctor reflects reality."
+   },
+   {
+    "title": "Doctor reports failures with no remediation \u2014 'Review above' doesn't tell a newcomer what to run",
+    "severity": "minor",
+    "where": "src/doctor.js:150-153,178-180",
+    "evidence": "Broken state output ends `2 check(s) failed. Review above.` with no next action. For `Required file missing: scripts/ralph-loop.sh` there's no hint that re-running install restores it (it does), nor any pointer for the jq/claude-missing cases beyond the finding text.",
+    "suggestion": "Append actionable remediation per failure class: missing/modified files \u2192 'run `ralph install -f` to restore'; missing jq/claude \u2192 install link/command."
+   },
+   {
+    "title": "`update` (and re-install) can never say 'Already up to date' \u2014 same version always shows a scary 'vX \u2192 vX, N files to update'",
+    "severity": "minor",
+    "where": "src/updateDetector.js:93-99 (isUpdate hardcoded true when a manifest exists); bin/ralph.js:101-105/236-240 dead branch",
+    "evidence": "Running `update --yes` with no version change printed `installed v0.1.0 \u2192 available v0.1.0` and `12 installer-owned file(s) to update, 1 conflict(s)\u2026` then rewrote 10 files. `detectUpdate` returns `isUpdate:true` unconditionally, so the `if (!updateInfo.isUpdate) 'Already up to date.'` path is unreachable.",
+    "suggestion": "Return isUpdate:false (or a distinct 'no changes' state) when installedVersion === availableVersion AND no files are missing/modified, so the tool can honestly report 'Already up to date.'"
+   },
+   {
+    "title": "Onboarding docs teach only the old story-by-story wizard flow \u2014 none of the shipped issue-intake / --write / --triage / --worktree / swarm / ralph-watch capabilities are surfaced to a newcomer",
+    "severity": "minor",
+    "where": "templates/loop/GETTING-STARTED.md (installed) + src/outro.js next-steps",
+    "evidence": "grep of the installed GETTING-STARTED for `issue|--write|triage|worktree|ralph-watch|swarm|dashboard` matched only 'Fix any issues'. The guide's 'Starting the Loop' and 'Next Steps' describe a single interactive wizard iteration; the loop script itself references those flags (7 keyword hits) but nothing explains them, so a newcomer never learns the loop's headline new features exist.",
+    "suggestion": "Add a short 'GitHub issue intake & safe write-back' section (and the ralph-watch dashboard/brake) to GETTING-STARTED and one next-step line, so the installed experience teaches the capabilities it ships."
+   },
+   {
+    "title": "Uninstall leaves an empty directory skeleton behind, and prints its completion line twice",
+    "severity": "polish",
+    "where": "src/uninstall.js:286-298 (only .ralph/ pruned) and bin/ralph.js:310 re-logging result.message",
+    "evidence": "After `uninstall --force` (remove all), `find` still showed `docs/epics`, `scripts/prompts/{bmad-fallbacks,common,dev,review,sm}` as empty dirs. Also `Uninstall complete. 15 files removed, 0 files preserved.` printed twice (once inside uninstall(), once from bin). Same double-print seen on `update` ('Updated 10 file(s).' x2).",
+    "suggestion": "Prune now-empty installer-created directories after removing files; and print the completion/summary line once (either in the function or in bin, not both)."
+   }
+  ],
+  "delights": [
+   "Preflight runs first and renders a clear checklist (`NODE_VERSION \u2026 (pass)`, `JQ: pass`, `CLAUDE: pass`, `BASH: pass`) \u2014 a confidence-building first screen that names each dependency.",
+   "Non-interactive `--yes` echoes a full readable plan before writing ('[non-interactive] Installing with defaults\u2026' + every decision: app dir, checkpoint command, task source, retries, tokens, gitignore, npm scripts, BMAD), so the user sees exactly what will happen.",
+   "Wizard copy is genuinely newcomer-oriented: it explains what the Ralph Loop is, says 'Press Enter to accept any default, or Ctrl-C to cancel (zero changes made)', and adapts the target message to the classification ('existing project. I'll add Ralph Loop files without touching your code').",
+   "Default-deny conflict policy protects users: install won't silently clobber pre-existing files without --force, and user-owned files (docs, src, epics) are preserved on update ('Keeping (user-modified): \u2026', 'user-owned file(s) preserved').",
+   ".gitignore handling is append-only and idempotent \u2014 it kept the user's `node_modules/` and added a deduped `# Ralph Loop` section rather than overwriting.",
+   "classifyTarget error messages are actionable, e.g. permission errors include `chmod +rx <path>` and a missing dir says exactly which path wasn't found.",
+   "Update conflict resolution offers a clear keep/take/backup model with per-file logging, and defaults safely to 'keep' with a hint ('Using default conflict resolution: keep (use --update-conflicts to override)').",
+   "`uninstall --yes` is clear about what it protects: lists user-owned files and reports '[Skipped] 3 user-owned files preserved' plus a tidy 'Uninstall complete. 12 files removed, 3 files preserved.' summary."
+  ]
+ },
+ {
+  "findings": [
+   {
+    "title": "Literal `<package>` placeholder shipped verbatim in user-facing update/doctor instructions",
+    "severity": "blocker",
+    "where": "installer/src/outro.js lines 28-29; installer/templates/loop/GETTING-STARTED.md lines 96, 132, 149",
+    "evidence": "outro.js hardcodes: log(`\\n\ud83d\udca1 Tip: Use 'npx <package> doctor' to validate your installation at any time.`); log(`   Use 'npx <package> update' to update the loop infrastructure later.\\n`); \u2014 confirmed in a real `node bin/ralph.js install --yes` run, the printed outro literally reads 'npx <package> doctor' and 'npx <package> update'. The installed GETTING-STARTED.md ships the same literal string at lines 96, 132, and 149 (`npx <package> update`, `npx <package> doctor`). No template substitution exists for this token anywhere in writer.js (grep for 'package' in writer.js finds no interpolation of this placeholder). If a newcomer pastes this into a shell verbatim, bash parses `<package>` as `<` (stdin redirect from a nonexistent file `package`) followed by `>` (stdout redirect creating a file named `doctor`/`update`) \u2014 `npx` runs with no arguments, silently creating a stray file and doing nothing useful, with no indication why.",
+    "suggestion": "Interpolate the real invocation the user should type, e.g. `npx @seevali/ralph-loop doctor` (or just `ralph doctor` since bin/ralph.js already installs a `ralph` executable) \u2014 pull the actual bin name from package.json the same way bin/ralph.js already does for --version, and pass it into printOutro() and the GETTING-STARTED.md template substitution."
+   },
+   {
+    "title": "`update` never reports \"Already up to date\" \u2014 isUpdate is hardcoded true, so every run claims files were updated even when nothing changed",
+    "severity": "major",
+    "where": "installer/src/updateDetector.js lines 93-99 (detectUpdate); consumed by installer/bin/ralph.js lines 101-105 and 236-240",
+    "evidence": "detectUpdate() always returns `{ isUpdate: true, ... }` whenever a manifest exists \u2014 installedVersion is compared to availableVersion only for display, never for branching. Ran `ralph update` twice in a row on a freshly-installed, untouched directory (same installer version 0.1.0 both times): both runs printed `installed v0.1.0 \u2192 available v0.1.0` followed by `12 installer-owned file(s) to update, 0 conflict(s), 3 user-owned file(s) preserved` and `Updated 11 file(s). Manifest rewritten.` \u2014 identical output both times, with no run ever reaching the `if (!updateInfo.isUpdate) { console.log('Already up to date.'); ... }` branch that bin/ralph.js clearly intends to reach in this case (that branch is effectively dead code given the current detectUpdate logic).",
+    "suggestion": "In detectUpdate(), set `isUpdate` based on whether installedVersion !== availableVersion (or whether any installer-owned file's currentChecksum actually differs from the shipped template), not merely on manifest presence. A newcomer running `update` to sanity-check their install should see 'Already up to date' when nothing changed, not a report of files rewritten every single time \u2014 the current text erodes trust that 'update' is meaningfully idempotent."
+   },
+   {
+    "title": "Validation errors reference camelCase JS keys instead of the actual CLI flag the user typed",
+    "severity": "major",
+    "where": "installer/src/cli-parser.js lines 101-110 (validateCliArgs: `throw new Error(\\`Invalid --${def.key}: ...\\`)`)",
+    "evidence": "Ran `ralph install --yes --use-bmad maybe` \u2192 `Error: Invalid --useBmad: Expected: yes | no, got: maybe`. Ran `ralph install --yes --task-source foo` \u2192 `Error: Invalid --taskSource: Expected: scaffold | existing, got: foo`. Ran `ralph install --yes --app-dir ../escape` \u2192 `Error: Invalid --appDir: Use a relative path (e.g., src, packages/ui).` In every case `def.key` is the internal camelCase Commander property name (`useBmad`, `taskSource`, `appDir`), but the flag the user actually typed \u2014 and the only one that exists \u2014 is kebab-case (`--use-bmad`, `--task-source`, `--app-dir`). `--useBmad` is not a recognized flag at all (commander would say 'unknown option'), so a newcomer who copies the error text back into their next command gets a second, different failure.",
+    "suggestion": "Store the real flag string in each FLAG_DEFINITIONS entry (it already exists as `def.flag`, e.g. `--use-bmad <yes|no>`) and use that \u2014 or derive kebab-case from the key \u2014 when building the error message, so the text a user sees matches a flag that actually parses."
+   },
+   {
+    "title": "Post-install \"Next steps\" always print the full absolute path instead of a relative command, even when installing into the current directory",
+    "severity": "minor",
+    "where": "installer/src/outro.js line 18 (`const projectPath = plan.targetDir === '.' ? 'current directory' : plan.targetDir;`); targetDir is set in installer/bin/ralph.js line 59 (`resolve(options.directory ?? '.')`)",
+    "evidence": "bin/ralph.js always resolves targetDir to an absolute path before building the InstallPlan, so `plan.targetDir === '.'` can never be true \u2014 the 'current directory' friendly branch is dead code. Verified with `ralph install --yes` (no -d flag) and again with `ralph install --yes -d .`: both produced identical outro text repeating the full scratch-path four to five times, e.g. `1. Read the guide:  cat /tmp/claude-1000/.../words/dotdir/GETTING-STARTED.md`, `2. Start your first loop:  bash /tmp/.../dotdir/scripts/ralph-loop.sh`, etc. \u2014 versus the much more scannable relative commands shown in the shipped GETTING-STARTED.md itself (`bash scripts/ralph-loop.sh`, `tail -f scripts/logs/latest.log`).",
+    "suggestion": "Compare targetDir against process.cwd() (after resolving both) rather than the literal string '.', and print short relative commands (optionally prefixed with `cd <dir> &&` only when it actually differs from cwd) so the common case \u2014 installing into the project you're already sitting in \u2014 reads as cleanly as the GETTING-STARTED.md guide it points to."
+   },
+   {
+    "title": "Bare `ralph` (no args) exits with status 1 and writes help to stderr, contradicting the source's evident intent to exit 0 on stdout",
+    "severity": "minor",
+    "where": "installer/bin/ralph.js lines 333-336 (`if (process.argv.length === 2) { program.outputHelp(); process.exit(0); }`)",
+    "evidence": "Ran `node bin/ralph.js` with no arguments: help text was printed, but to stderr (verified by redirecting stdout and stderr to separate files \u2014 stdout.txt was empty, stderr.txt held the full usage block), and the process exited with code 1, not 0. The dedicated fallback at the bottom of the file that explicitly calls `process.exit(0)` never executes, because Commander's own `program.parse()` already detects the missing-command case and exits first \u2014 the intended branch is unreachable dead code.",
+    "suggestion": "Register the same 'no command \u2192 show help, exit 0' behavior via Commander's own hooks (e.g. `program.showHelpAfterError()` or checking `program.args.length` before calling `.parse()`), or explicitly pass `{ exitOverride: false }`/handle it in an error listener, so a bare `ralph` invocation behaves predictably for scripting (exit 0, help on stdout) rather than reading like a failure."
+   },
+   {
+    "title": "\"PRD\" and \"epic\" appear unexplained in the interactive wizard's task-source question, before the user has seen any template that defines them",
+    "severity": "minor",
+    "where": "installer/src/wizard.js lines 279-289 (Step 6: task source select prompt)",
+    "evidence": "The select prompt's only two options are labeled 'Start with a template PRD and epic (recommended)' and 'Point to an existing PRD and epic' with hint 'Must follow the ### Story X.Y: Title format'. Neither 'PRD' nor 'epic' is expanded or defined anywhere earlier in the wizard (the intro text at lines 190-198 only says the loop builds the app 'story by story'). The actual definitions ('PRD (Product Requirements Document)', 'this file defines your project's stories') only exist inside the scaffolded template files (epic-stub-prd.md line 3, epic-stub-stories.md line 3) \u2014 which a user sees only *after* answering this question, if `scaffold` is chosen, or never, if they choose `existing` and already have their own files.",
+    "suggestion": "Add a one-line parenthetical the first time these terms appear in the wizard, e.g. 'Start with a template PRD (Product Requirements Document) and epic (a set of stories) (recommended)', mirroring the teaching comments already written into the template files."
+   },
+   {
+    "title": "Installer's own README defines \"BMAD\" with an expansion that doesn't match the term's use anywhere else in the repo, while the wizard and root README never expand it at all",
+    "severity": "minor",
+    "where": "installer/README.md line 14 ('Installs BMAD (the Behavioral Model Driven development framework)'); contrast with installer/src/wizard.js line 324 ('Install BMAD method modules (core, bmm)...') and root README.md line 41 ('BMAD Method agents ... from bmad-code-org/BMAD-METHOD')",
+    "evidence": "installer/README.md is the only place in the repo that spells out what the letters B-M-A-D stand for, and it expands them as 'Behavioral Model Driven' \u2014 a phrase that does not appear anywhere else in the codebase (grep for 'Behavioral Model' / 'Breakthrough Method' across the repo found no other reference). The root README.md, by contrast, never expands the acronym at all, just links to the upstream bmad-code-org/BMAD-METHOD project. The wizard's confirm prompt ('Install BMAD method modules (core, bmm) into docs/ as part of setup?') introduces two more unexplained tokens \u2014 'core' and 'bmm' \u2014 with zero definition anywhere in installer-facing text.",
+    "suggestion": "Either drop the invented expansion from installer/README.md (match the root README's approach of treating BMAD as a proper noun with a link) or verify the correct official expansion and use it consistently in exactly one place; and add a short parenthetical in the wizard's BMAD confirm prompt explaining what 'core' and 'bmm' modules actually give the user (e.g. '(core: shared BMAD tooling; bmm: the Scrum-Master/Dev/Review agent personas the loop uses)')."
+   }
+  ],
+  "delights": [
+   "Non-existent/invalid --directory paths, permission errors, and 'no install found' cases (uninstall, update, doctor) all produce specific, actionable error text with the exact path and next action \u2014 e.g. 'Target directory not found: <path>', 'Permission denied on target directory. Check permissions: chmod +rx <path>', 'No existing Ralph Loop installation found in this directory. Run install first.'",
+   "Preflight checklist (node/git/jq/claude/bash) prints a clean pass/warn/fail glyph list with an inline install command for each missing tool (apt/brew/choco/winget variants for jq; WSL2/Git Bash links for bash on Windows) \u2014 genuinely actionable, no jargon.",
+   "The wizard's intro is explicit that Ctrl-C cancels with zero changes made, and the cancellation path prints a clear 'Nothing was changed.' outro \u2014 reduces first-run anxiety about accidentally trashing a directory.",
+   "--list-options gives a complete, well-aligned reference of every non-interactive flag with its default value inline, which is exactly what a CI/scripting user needs without reading source.",
+   "The scaffolded epic-stub-prd.md and epic-stub-stories.md templates carry inline 'TEACHING COMMENT' HTML comments that define PRD/epic in place and give concrete examples ('Watchlist \u2014 The ordered set of items...') \u2014 good self-teaching design that the interactive wizard prompts don't yet match.",
+   "Uninstall clearly separates installer-owned vs user-owned files, lists user-owned files by name before asking to remove them, and defaults to preserving them \u2014 safe-by-default behavior with visible reasoning."
+  ]
+ },
+ {
+  "findings": [
+   {
+    "title": "`ralph update` silently discards the user's custom stack description, checkpoint command, and app dir, replacing them with generic defaults",
+    "severity": "blocker",
+    "where": "installer/bin/ralph.js (update/install existing-install branches, lines ~131-140 and ~266-275) reading `manifest.wizardAnswers`; installer/src/writer.js writeManifest (only stores explainerConfirmed/stackConfirmed/loopKnobsConfirmed booleans, never the actual answer values)",
+    "evidence": "Installed fresh with `install -y --app-dir myapp --stack-description \"Vue 3 + Vite (custom)\" --checkpoint-command \"pnpm build && pnpm test\"`. docs/project-conventions.md correctly showed `Vue 3 + Vite (custom)` and `pnpm build && pnpm test`. Manifest's wizardAnswers was `{explainerConfirmed:true, stackConfirmed:true, loopKnobsConfirmed:true}` \u2014 the actual values were never persisted. Ran a plain `ralph update -d <dir> -y` (no flags, the exact command the outro tells users to run later). Output: `Updated 11 file(s). Manifest rewritten.` exit 0. docs/project-conventions.md now reads `Unknown stack` and `npm run build && npm test` \u2014 the user's real settings were overwritten with `bin/ralph.js`'s `wa.stackDescription ?? 'Unknown stack'` / `wa.checkpointCommand ?? 'npm run build && npm test'` fallback defaults, because `wa.stackDescription` etc. are always undefined.",
+    "suggestion": "Persist the actual wizard answers (appDir, checkpointCommand, stackDescription, taskSource) in manifest.wizardAnswers at install time, not just confirmation booleans, and have update/install-on-existing read those real values. Add a regression test that installs with custom values, updates with no flags, and asserts project-conventions.md is unchanged."
+   },
+   {
+    "title": "A corrupted .ralph/manifest.json is reported differently \u2014 and wrongly \u2014 by three of the four subcommands",
+    "severity": "blocker",
+    "where": "installer/src/updateDetector.js detectUpdate() (lines 41-56, generic catch swallows JSON.parse errors into `{isUpdate:false}`); installer/src/doctor.js loadManifest() (lines 208-216, same generic swallow); contrast with installer/src/uninstall.js loadManifest() (lines 10-30, which correctly distinguishes missing vs malformed)",
+    "evidence": "With `.ralph/manifest.json` containing `{not valid json`: `ralph doctor` \u2192 \"\u2717 .ralph/manifest.json not found \u2014 is this a Ralph installation?\" (exit 1) \u2014 misleading, the file exists. `ralph update` \u2192 \"Already up to date.\" (exit 0) \u2014 actively hides real corruption. `ralph install` on the same dir \u2192 also \"Already up to date.\" (exit 0). Only `ralph uninstall` \u2192 \"Manifest is corrupted. Cannot safely uninstall.\" (exit 1) correctly identifies the problem.",
+    "suggestion": "Give updateDetector.js and doctor.js the same explicit JSON.parse try/catch that uninstall.js already has, and surface 'manifest is corrupted' consistently across all four commands instead of silently downgrading to 'not found' or 'already up to date'."
+   },
+   {
+    "title": "Failed BMAD module install is swallowed \u2014 overall install still reports full success (exit 0, \u2713 banner) despite a stated feature failing",
+    "severity": "major",
+    "where": "installer/src/bmad.js installBmad() catch block, line 72: `return { success: true };` \u2014 even on failure",
+    "evidence": "Default `-y` install (use-bmad defaults to yes) produced: `BMAD install error: error: unknown option '--artifact-folder'` then `BMAD installation failed. Run this command to install manually: ...` immediately followed by `Installed 15 file(s). Manifest written...` and the `\u2713 Ralph Loop installed successfully!` banner, exit 0. The wizard's own plan had explicitly stated `Will install BMAD modules (core, bmm)`.",
+    "suggestion": "Return `{success:false, error}` from installBmad() on failure and let the outro/exit code reflect a degraded install (e.g. a distinct '\u26a0 installed with warnings' banner and non-zero exit, or at minimum keep the failure message visually adjacent to the final banner instead of getting buried mid-scroll)."
+   },
+   {
+    "title": "No upfront writable-target check \u2014 the full wizard flow runs to completion before an EACCES failure surfaces at the very last step",
+    "severity": "major",
+    "where": "installer/bin/ralph.js install action \u2014 preflight() only checks node/git/jq/claude/bash; classifyTarget() only needs read access; the write-permission check doesn't happen until installer/src/writer.js executeWrite()'s `fs.mkdir` deep in phase 4",
+    "evidence": "On a `chmod 555` (read+execute, no write) target dir with `-y`: full checklist printed, full wizard plan echoed (target dir, app dir, checkpoint command, stack, task source, retries, tokens, BMAD flag...), `Building write map...`, `Checking for conflicts...`, `Writing 15 file(s)...`, then `Install failed: EACCES: permission denied, mkdir '.../docs'`. In interactive mode this means a user answers every prompt before discovering the target was never writable.",
+    "suggestion": "Add a cheap writability probe (e.g. `fs.access(targetDir, fs.constants.W_OK)` or a temp-file touch/unlink) to classifyTarget() or preflight(), and fail fast with the same style of actionable message used elsewhere (`chmod +rx ...`) before the wizard starts."
+   },
+   {
+    "title": "Bare `ralph` (no arguments) exits 1 with help on stderr, not the intended exit 0 \u2014 the defensive code for this is dead",
+    "severity": "major",
+    "where": "installer/bin/ralph.js lines 333-336: `if (process.argv.length === 2) { program.outputHelp(); process.exit(0); }`",
+    "evidence": "Running `node bin/ralph.js` with no args prints the usage/help text to **stderr** and exits with code **1** (verified via separate stdout/stderr capture: stdout empty, stderr has the usage block). This is Commander v12's own default behavior for a program with registered subcommands and no default action \u2014 `program.parse()` exits the process before the custom `if (process.argv.length === 2)` block in ralph.js ever runs, confirmed by reproducing the identical exit-1/stderr behavior with a minimal standalone Commander v12 script.",
+    "suggestion": "Use Commander's `.exitOverride()`/`configureOutput()` or check `process.argv.length===2` before calling `program.parse()`, or add a top-level default action, so the very first command a newcomer types doesn't read as an error."
+   },
+   {
+    "title": "Nested installs are allowed silently \u2014 no ancestor-directory check for an existing Ralph installation",
+    "severity": "minor",
+    "where": "installer/src/classify.js classifyTarget() only inspects the target directory itself, never walks up for an existing `.ralph/manifest.json`",
+    "evidence": "Installed successfully into `nested/` (creating `nested/.ralph/manifest.json`), then ran `install -y` again with `-d nested/subdir` \u2014 succeeded (exit 0) and created a second, independent `nested/subdir/.ralph/manifest.json` with its own `scripts/ralph-loop.sh`, with no warning that `nested/` already has an installation.",
+    "suggestion": "When classifying, also check ancestor directories for `.ralph/manifest.json` and warn (or require `--force`) before creating a nested, independent installation."
+   },
+   {
+    "title": "`--update-conflicts` is validated only on the update path; an invalid value passed to a fresh `install` is silently ignored",
+    "severity": "minor",
+    "where": "installer/bin/ralph.js install action \u2014 the `--update-conflicts` validity check (line ~86) only runs inside `if (classifyResult.type === 'existing-install')`",
+    "evidence": "`ralph install -d <empty-dir> -y --update-conflicts bogus` completed a full successful install (exit 0) with no error about the invalid `--update-conflicts` value, whereas the exact same invalid value on an existing install correctly errors with `Error: Invalid --update-conflicts value: bogus. Valid values: keep, take, backup` (exit 1).",
+    "suggestion": "Validate `--update-conflicts` unconditionally (or at least warn that it's a no-op for fresh installs) so typos aren't silently swallowed depending on target state."
+   },
+   {
+    "title": "An interrupted install (crash between file-writing and manifest-writing) leaves a fully working but untracked installation, with no command surfacing how to recover it",
+    "severity": "minor",
+    "where": "installer/src/writer.js executeWrite() (files phase) vs writeManifest() (separate phase) \u2014 no atomicity across the two; installer/src/doctor.js and src/uninstall.js only ever check for manifest presence",
+    "evidence": "SIGKILL'ing the install process right after `Wrote 15 file(s).` but before manifest write left all 15 real files on disk (scripts/ralph-loop.sh, docs/*, .gitignore) with **no** `.ralph/manifest.json`. A follow-up `ralph doctor` on that directory reports \".ralph/manifest.json not found \u2014 is this a Ralph installation?\" and `ralph uninstall` reports \"No Ralph Loop install found here\" \u2014 both implying nothing is installed, even though a working loop is sitting right there.",
+    "suggestion": "Either write a minimal manifest stub before the file-write phase (so partial installs are still detectable/repairable), or have doctor/classify recognize 'files present but manifest missing' as its own state and suggest `install --force` to repair, instead of reporting it identically to 'never installed'."
+   },
+   {
+    "title": "Preflight never checks git identity (user.name/user.email) or `gh` (needed for the new --issue/--triage/write-back features), so failures surface deep inside the first loop run instead of at install time",
+    "severity": "minor",
+    "where": "installer/src/preflight.js (checks node, git binary, jq, claude, bash only \u2014 no git identity, no gh); no reference to `gh`/`--issue`/`--worktree`/`--triage` anywhere in installer/src",
+    "evidence": "Simulated a git binary present but no configured identity (`env -i HOME=<empty> git commit --allow-empty -m test`) \u2192 git's own fatal error 'Please tell me who you are... fatal: empty ident name'. `preflight()` only calls `which git` (pass/warn), never checks identity. templates/loop/ralph-loop.sh's first `git commit` is at line 1683, reached only after a full Dev+Review agent cycle for a story \u2014 so on a fresh container with git installed but unconfigured, the failure is discovered only after burning a full story's worth of agent calls. Separately, `grep -rn \"gh\\b\" installer/src` returns nothing, so preflight gives no signal about the GitHub CLI the new issue-intake features require.",
+    "suggestion": "Add a preflight check that runs `git config user.name`/`user.email` (warn if unset, with the exact `git config --global user.name/user.email` remediation git itself prints) and, once templates catch up, a `gh` presence check alongside the existing git/jq/claude checks."
+   }
+  ],
+  "delights": [
+   "File-exists-without-manifest conflict guard works as a real safety net: installing into a directory with a hand-rolled scripts/ralph-loop.sh (no manifest) refuses to touch it (\"Conflicts detected \u2014 cannot proceed without --force\", exit 1) and leaves the file byte-for-byte untouched; only with explicit --force does it overwrite. The same code path (verified via a read-only classifyTarget() call, no writes performed) would also protect someone who accidentally points the installer at the ralph-loop-demo repo root itself.",
+   "executeWrite() has genuine crash-safety: when a write fails partway through (tested via a pre-existing file blocking a needed directory), it unlinks every file it had written in that session before re-throwing, and a subsequent retry after fixing the blocker succeeds cleanly with no leftover cruft in the common case.",
+   "Non-interactive detection fails fast and clearly: running the wizard with no TTY and without --yes exits immediately (no hang) with \"Wizard requires an interactive terminal. Use --yes for non-interactive mode.\"",
+   "Where preflight/classify errors do fire, they're genuinely actionable and copy-pasteable: missing target dir names the exact path, EACCES on a target says `chmod +rx <path>`, old Node links straight to nodejs.org/download, missing bash on Windows points to WSL2/Git Bash install docs.",
+   "Weird-but-valid paths (spaces in directory names, trailing slashes) install correctly with no issues.",
+   "doctor's per-check output is well-structured pass/fail with a clear final tally ('N check(s) failed. Review above.') and a sane exit code contract (0 pass / 1 fail / 2 unexpected error)."
+  ]
+ }
+]

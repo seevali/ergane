@@ -590,6 +590,113 @@ test('renderChecklist: includes finding messages in output', () => {
   );
 });
 
+// ─── Refresh: ralph-watch.sh present + executable ─────────────────────────────
+
+async function chmodx(dir, rel) {
+  await fs.chmod(path.join(dir, rel), 0o755);
+}
+
+test('doctor: ralph-watch.sh present + executable → check passes', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeFixture(dir, { 'scripts/ralph-watch.sh': '#!/usr/bin/env bash\necho hi\n' });
+    await chmodx(dir, 'scripts/ralph-watch.sh');
+
+    const { findings } = await runDoctor(dir, { log: () => {}, checkCommand: mockCommandFound });
+    const f = findings.find((x) => x.check === 'ralph-watch-executable');
+    assert.ok(f, 'should emit a ralph-watch-executable finding');
+    assert.equal(f.status, 'pass');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: ralph-watch.sh present but NOT executable → check fails', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeFixture(dir, { 'scripts/ralph-watch.sh': '#!/usr/bin/env bash\necho hi\n' });
+    await fs.chmod(path.join(dir, 'scripts/ralph-watch.sh'), 0o644);
+
+    const result = await runDoctor(dir, { log: () => {}, checkCommand: mockCommandFound });
+    const f = result.findings.find((x) => x.check === 'ralph-watch-executable');
+    assert.ok(f, 'should emit a ralph-watch-executable finding');
+    assert.equal(f.status, 'fail');
+    assert.equal(result.passed, false, 'a non-executable watch script should fail the doctor');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: ralph-watch.sh in manifest but missing on disk → check fails', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeFixture(dir, { 'scripts/ralph-watch.sh': '#!/usr/bin/env bash\n' });
+    await fs.unlink(path.join(dir, 'scripts/ralph-watch.sh'));
+
+    const { findings } = await runDoctor(dir, { log: () => {}, checkCommand: mockCommandFound });
+    const f = findings.find((x) => x.check === 'ralph-watch-executable');
+    assert.ok(f, 'should emit a ralph-watch-executable finding');
+    assert.equal(f.status, 'fail');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: ralph-watch check is skipped when the install did not ship it', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeFixture(dir, { 'scripts/ralph-loop.sh': '#!/bin/bash\n' });
+    await chmodx(dir, 'scripts/ralph-loop.sh');
+
+    const { findings } = await runDoctor(dir, { log: () => {}, checkCommand: mockCommandFound });
+    const f = findings.find((x) => x.check === 'ralph-watch-executable');
+    assert.equal(f, undefined, 'no watch finding when the manifest does not list ralph-watch.sh');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── Refresh: gh check is informational (never fails, both ways) ──────────────
+
+test('doctor: gh present + authenticated → informational pass, does not fail doctor', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeFixture(dir, {});
+    const result = await runDoctor(dir, {
+      log: () => {},
+      checkCommand: mockCommandFound,
+      checkGhAuth: async () => ({ authenticated: true }),
+    });
+    const f = result.findings.find((x) => x.check === 'gh-available');
+    assert.ok(f, 'should emit a gh-available finding');
+    assert.equal(f.status, 'pass');
+    assert.equal(f.informational, true);
+    assert.equal(result.passed, true, 'gh informational finding must not fail an otherwise-clean install');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: gh missing → still informational, still does not fail doctor', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeFixture(dir, {});
+    const result = await runDoctor(dir, {
+      log: () => {},
+      checkCommand: (cmd) =>
+        cmd === 'gh' ? Promise.resolve({ found: false }) : Promise.resolve({ found: true, path: `/usr/bin/${cmd}` }),
+    });
+    const f = result.findings.find((x) => x.check === 'gh-available');
+    assert.ok(f, 'should emit a gh-available finding even when gh is absent');
+    assert.equal(f.status, 'pass', 'gh finding never carries a fail status');
+    assert.equal(f.informational, true);
+    assert.ok(/GitHub-issue workflow/i.test(f.message), 'message should explain gh is only for the issue workflow');
+    assert.equal(result.passed, true, 'a missing gh must not fail the doctor');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
 // ─── AC-8: findings structure ─────────────────────────────────────────────────
 
 test('doctor: returns findings array with check, status, message fields', async () => {

@@ -30,6 +30,7 @@ import {
 
 const SYNC_SCRIPT = path.join(INSTALLER_ROOT, 'scripts', 'sync-templates.sh');
 const TEMPLATE_LOOP_SCRIPT = path.join(INSTALLER_ROOT, 'templates', 'loop', 'ralph-loop.sh');
+const TEMPLATE_WATCH_SCRIPT = path.join(INSTALLER_ROOT, 'templates', 'loop', 'ralph-watch.sh');
 
 describe('E2E: Ralph Loop Installer', () => {
 
@@ -202,6 +203,52 @@ describe('E2E: Ralph Loop Installer', () => {
     }
   });
 
+  // ── Refresh 4c: sync gate detects drift in the watch script ───────────────────
+
+  it('Refresh: sync gate detects drift in ralph-watch.sh', { timeout: 30000 }, async () => {
+    const original = await fs.readFile(TEMPLATE_WATCH_SCRIPT, 'utf8');
+    try {
+      await fs.appendFile(TEMPLATE_WATCH_SCRIPT, '\n# DRIFT-MARKER-INJECTED-BY-TEST\n', 'utf8');
+
+      const syncResult = runBash([SYNC_SCRIPT, '--check']);
+
+      assert.notEqual(
+        syncResult.exitCode, 0,
+        'Sync gate should detect drift in ralph-watch.sh (expected non-zero exit) but exited 0',
+      );
+      assert.ok(
+        syncResult.stderr.includes('ralph-watch.sh'),
+        `--check should name the drifted watch script; stderr: ${syncResult.stderr}`,
+      );
+    } finally {
+      await fs.writeFile(TEMPLATE_WATCH_SCRIPT, original, 'utf8');
+    }
+  });
+
+  // ── Refresh: fresh install ships a working, executable ralph-watch.sh ─────────
+
+  it('Refresh: fresh install yields an executable ralph-watch.sh whose `ls` runs', { timeout: 90000 }, async () => {
+    const { dir, cleanup } = await createEmptyFixture();
+    try {
+      const installResult = runCli(['install', '--directory', dir, '--yes', '--use-bmad', 'no']);
+      assert.equal(installResult.exitCode, 0, `Install failed: ${installResult.stderr}`);
+
+      const watchPath = path.join(dir, 'scripts', 'ralph-watch.sh');
+      const st = await fs.stat(watchPath);
+      assert.notEqual(st.mode & 0o111, 0, 'installed ralph-watch.sh must be executable');
+
+      // `./scripts/ralph-watch.sh ls` must run and print the empty-jobs line.
+      const lsResult = runBash([watchPath, 'ls'], { cwd: dir, timeout: 10000 });
+      assert.equal(lsResult.exitCode, 0, `ralph-watch.sh ls should exit 0; stderr: ${lsResult.stderr}`);
+      assert.ok(
+        lsResult.stdout.includes('no jobs'),
+        `ralph-watch.sh ls should print the empty-jobs line; stdout: ${lsResult.stdout}`,
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
   // ── PRD criterion 5a: non-TTY install output has no ANSI escape codes ─────────
 
   it('PRD criterion 5a: non-TTY output contains no ANSI codes', { timeout: 90000 }, async () => {
@@ -279,6 +326,7 @@ describe('E2E: Ralph Loop Installer', () => {
 
       // Verify key files exist before uninstall
       await fs.access(path.join(dir, 'scripts', 'ralph-loop.sh'));
+      await fs.access(path.join(dir, 'scripts', 'ralph-watch.sh'));
       await fs.access(path.join(dir, '.ralph', 'manifest.json'));
 
       // Step 2: Uninstall with --yes (preserves user-owned files without prompting)
@@ -297,6 +345,11 @@ describe('E2E: Ralph Loop Installer', () => {
         .then(() => false)
         .catch(() => true);
       assert.ok(loopShGone, 'scripts/ralph-loop.sh must be removed by uninstall');
+
+      const watchShGone = await fs.access(path.join(dir, 'scripts', 'ralph-watch.sh'))
+        .then(() => false)
+        .catch(() => true);
+      assert.ok(watchShGone, 'scripts/ralph-watch.sh must be removed by uninstall');
 
       const manifestGone = await fs.access(path.join(dir, '.ralph', 'manifest.json'))
         .then(() => false)

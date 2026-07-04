@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { installBmad } from './bmad.js';
+import { getPackageName, cliInvocation } from './pkg.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates', 'loop');
@@ -94,6 +95,7 @@ function getOwnership(filePath) {
 
   if (
     normalized === 'scripts/ralph-loop.sh' ||
+    normalized === 'scripts/ralph-watch.sh' ||
     normalized.startsWith('scripts/prompts/') ||
     normalized === 'docs/project-conventions.md' ||
     normalized === '.gitignore'
@@ -165,10 +167,17 @@ async function buildGitignoreContent(targetPath, entries) {
  * @returns {Promise<Map<string,string>>}
  */
 export async function buildWriteMap(plan) {
+  const appDir = plan.appDir || 'src';
   const substitutions = {
-    APP_DIR: plan.appDir || 'src',
+    APP_DIR: appDir,
     CHECKPOINT_COMMAND: plan.checkpointCommand || 'npm run build && npm test',
     STACK_DESCRIPTION: plan.stackDescription || 'Unknown stack',
+    PACKAGE_NAME: getPackageName(),
+    // The runnable CLI invocation (`npx <name>`), defined once in pkg.js so the
+    // guide and the outro tip name the CLI identically. Bare {{PACKAGE_NAME}} is
+    // NOT runnable (the bin is `ralph`, not the package name), so user-facing
+    // commands must use {{CLI_INVOCATION}}.
+    CLI_INVOCATION: cliInvocation(),
   };
 
   const writeMap = new Map();
@@ -179,9 +188,14 @@ export async function buildWriteMap(plan) {
   validateNoUnsubstituted(conventions);
   writeMap.set('docs/project-conventions.md', conventions);
 
-  // Always: scripts/ralph-loop.sh (installer-owned)
+  // Always: scripts/ralph-loop.sh (installer-owned, executable)
   const loopScript = await loadTemplateFile('ralph-loop.sh');
   writeMap.set('scripts/ralph-loop.sh', loopScript);
+
+  // Always: scripts/ralph-watch.sh (installer-owned, executable) — the swarm
+  // dashboard + pause/resume/abort brake that the loop's --issues features drive.
+  const watchScript = await loadTemplateFile('ralph-watch.sh');
+  writeMap.set('scripts/ralph-watch.sh', watchScript);
 
   // Always: scripts/prompts/** (installer-owned)
   const promptFiles = await gatherPromptFiles();
@@ -189,9 +203,17 @@ export async function buildWriteMap(plan) {
     writeMap.set(filePath, content);
   }
 
-  // Always: GETTING-STARTED.md (user-owned)
-  const gettingStarted = await loadTemplateFile('GETTING-STARTED.md');
+  // Always: GETTING-STARTED.md (user-owned). Rendered so the guide names the real
+  // CLI (PACKAGE_NAME) and the configured app dir instead of literal placeholders.
+  const gettingStartedTpl = await loadTemplateFile('GETTING-STARTED.md');
+  const gettingStarted = renderTemplate(gettingStartedTpl, substitutions);
+  validateNoUnsubstituted(gettingStarted);
   writeMap.set('GETTING-STARTED.md', gettingStarted);
+
+  // Always: an empty app source directory so the loop's project-dir preflight
+  // passes on a fresh install. A .gitkeep keeps the (otherwise empty) dir in git.
+  // User-owned: it's the user's source tree — never overwritten or reverted.
+  writeMap.set(`${appDir}/.gitkeep`, '');
 
   // Conditional: scaffold docs (user-owned — users will edit these)
   if (plan.taskSource === 'scaffold') {
@@ -447,6 +469,11 @@ export async function executeWrite(targetPath, approvedMap) {
       const tmpPath = `${fullPath}.ralph-tmp`;
       await fs.writeFile(tmpPath, normalized, 'utf8');
       await fs.rename(tmpPath, fullPath);
+
+      // Shell scripts must be directly runnable (e.g. ./scripts/ralph-watch.sh).
+      if (filePath.endsWith('.sh')) {
+        await fs.chmod(fullPath, 0o755);
+      }
 
       written.push(filePath);
     }

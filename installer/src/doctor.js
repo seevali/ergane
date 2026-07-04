@@ -15,11 +15,13 @@ import { hashFile } from './writer.js';
  * @param {object} [opts]
  * @param {Function} [opts.log] - injectable console.log
  * @param {Function} [opts.checkCommand] - injectable (cmd) => Promise<{found, path?}>
- * @returns {Promise<{passed: boolean, findings: Array<{check, status, message}>}>}
+ * @param {Function} [opts.checkGhAuth]  - injectable () => Promise<{authenticated: boolean}>
+ * @returns {Promise<{passed: boolean, findings: Array<{check, status, message, informational?}>}>}
  */
 export async function runDoctor(targetPath, opts = {}) {
   const log = opts.log ?? console.log;
   const checkCommand = opts.checkCommand ?? checkCommandAvailable;
+  const checkGhAuth = opts.checkGhAuth ?? checkGhAuthStatus;
 
   const findings = [];
 
@@ -116,6 +118,63 @@ export async function runDoctor(targetPath, opts = {}) {
     });
   }
 
+  // Check 4b: scripts/ralph-watch.sh present + executable.
+  // Only validated for installs that shipped it (manifest lists it). Fail-level is
+  // consistent with how a missing loop script is treated (a hard fail).
+  if (manifest?.files?.['scripts/ralph-watch.sh']) {
+    const watchPath = path.join(targetPath, 'scripts/ralph-watch.sh');
+    try {
+      const stat = await fs.stat(watchPath);
+      if ((stat.mode & 0o111) === 0) {
+        findings.push({
+          check: 'ralph-watch-executable',
+          status: 'fail',
+          message: 'scripts/ralph-watch.sh is present but not executable — run: chmod +x scripts/ralph-watch.sh',
+        });
+      } else {
+        findings.push({
+          check: 'ralph-watch-executable',
+          status: 'pass',
+          message: 'scripts/ralph-watch.sh present and executable',
+        });
+      }
+    } catch {
+      findings.push({
+        check: 'ralph-watch-executable',
+        status: 'fail',
+        message: 'scripts/ralph-watch.sh is missing — re-run install to restore it',
+      });
+    }
+  }
+
+  // Check 4c: gh CLI presence + auth (INFORMATIONAL — never fails the doctor).
+  // The GitHub CLI is only needed for the issue-driven workflow (--issue/--write/--issues);
+  // a project that only uses the epic-file workflow never touches it.
+  const ghCheck = await checkCommand('gh');
+  let ghMessage;
+  if (!ghCheck.found) {
+    ghMessage =
+      'gh CLI not found — needed only for the GitHub-issue workflow (--issue/--write/--issues). ' +
+      'Install from https://cli.github.com';
+  } else {
+    let authed = false;
+    try {
+      authed = (await checkGhAuth()).authenticated === true;
+    } catch {
+      authed = false;
+    }
+    ghMessage = authed
+      ? `gh CLI found at ${ghCheck.path} and authenticated — GitHub-issue workflow ready (--issue/--write/--issues)`
+      : `gh CLI found at ${ghCheck.path} but not authenticated (run: gh auth login) — ` +
+        'needed only for the GitHub-issue workflow (--issue/--write/--issues)';
+  }
+  findings.push({
+    check: 'gh-available',
+    status: 'pass',
+    informational: true,
+    message: ghMessage,
+  });
+
   // Check 5: Epic story headers are parseable
   if (manifest) {
     const epicPaths = ['docs/epics/project-stories.md', 'docs/epics/project-prd.md'];
@@ -149,7 +208,8 @@ export async function runDoctor(targetPath, opts = {}) {
   const isTTY = process.stdout.isTTY ?? false;
   log('\n' + renderChecklist(findings, isTTY));
 
-  const passed = findings.every((f) => f.status === 'pass');
+  // Only hard failures block; informational findings (e.g. the gh check) never fail.
+  const passed = findings.every((f) => f.status !== 'fail');
   return { passed, findings };
 }
 
@@ -163,7 +223,7 @@ export function renderChecklist(findings, isTTY = false) {
   let output = 'Installation validation:\n\n';
 
   for (const f of findings) {
-    const icon = f.status === 'pass' ? '✓' : '✗';
+    const icon = f.informational ? 'ℹ' : f.status === 'pass' ? '✓' : '✗';
     const color = isTTY && f.status === 'fail' ? '\x1b[31m' : '';
     const reset = isTTY ? '\x1b[0m' : '';
 
@@ -197,6 +257,23 @@ async function checkCommandAvailable(command) {
     return { found: true, path: result.stdout.trim() };
   } catch {
     return { found: false };
+  }
+}
+
+/**
+ * Check whether `gh` is authenticated. Runs `gh auth status` locally (no network).
+ * @returns {Promise<{authenticated: boolean}>}
+ */
+async function checkGhAuthStatus() {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+
+  try {
+    await execFileAsync('gh', ['auth', 'status']);
+    return { authenticated: true };
+  } catch {
+    return { authenticated: false };
   }
 }
 

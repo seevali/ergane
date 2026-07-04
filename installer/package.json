@@ -1,6 +1,6 @@
 {
   "name": "@seevali/ralph-loop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Interactive wizard to install and manage the Ralph Loop—an agentic workflow for software projects",
   "type": "module",
   "keywords": [

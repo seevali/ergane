@@ -11,8 +11,9 @@ npx @seevali/ralph-loop install
 ## What it does
 
 - Scaffolds a Ralph Loop into an empty directory or existing project
-- Installs BMAD (the Behavioral Model Driven development framework)
+- Installs [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) agent modules (`core`, `bmm`)
 - Configures project conventions and environment
+- Ships both loop entry points — the epic-file workflow and the GitHub-issue workflow (`--issue`/`--write`/`--issues`) with the `ralph-watch` swarm dashboard
 - Non-interactive mode for CI/CD scripts (`--yes`)
 
 ## Prerequisites
