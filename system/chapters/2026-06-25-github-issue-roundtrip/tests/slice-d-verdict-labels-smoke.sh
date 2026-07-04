@@ -179,25 +179,30 @@ reset_log() { : > "$GH_WRITE_LOG"; }
 echo "── Slice d verdict-labels smoke ──────────────────────────────"
 
 # ── 0. Sanity: the fenced block defines the helpers + the label vocabulary ──
+# The status namespace GREW from four to SEVEN with issue #2 (Triage / Idea 4) — the
+# three stage labels (ralph:ready / ralph:needs-triage / ralph:blocked) share this same
+# single-label array so the "exactly ONE ralph: label" invariant holds globally.
 il_src="$(extract_issue_label)"
 if grep -q 'set_issue_label()' <<< "$il_src" \
    && grep -q 'ensure_ralph_labels()' <<< "$il_src" \
-   && grep -q 'RALPH_STATUS_LABELS=(ralph:building ralph:needs-fix ralph:in-review ralph:done)' <<< "$il_src"; then
-  pass "fenced block defines ensure_ralph_labels + set_issue_label + the four ralph: status labels"
+   && grep -q 'RALPH_STATUS_LABELS=(ralph:building ralph:needs-fix ralph:in-review ralph:done ralph:ready ralph:needs-triage ralph:blocked)' <<< "$il_src"; then
+  pass "fenced block defines ensure_ralph_labels + set_issue_label + the seven ralph: status labels"
 else
   fail "fenced RALPH ISSUE LABEL block not found or missing a helper / the label vocabulary"
 fi
 
 # ── 1. ensure_ralph_labels (--write on): create only missing labels, no-churn re-run ──
+# The array grew to SEVEN with issue #2 (four build + three stage labels), so a fresh
+# repo now takes seven creates — the assertion tracks the grown contract, not a weakened one.
 fresh_repo; reset_log
 GITHUB_WRITE=1 REPO_SLUG="seevali/ralph-loop-demo" run_label do_ensure >/dev/null
 created="$(create_count)"
 have_all=true
-for l in ralph:building ralph:needs-fix ralph:in-review ralph:done; do
+for l in ralph:building ralph:needs-fix ralph:in-review ralph:done ralph:ready ralph:needs-triage ralph:blocked; do
   grep -qxF "$l" "$GH_REPO_LABELS" || have_all=false
 done
-if [[ "$created" -eq 4 ]] && $have_all; then
-  pass "ensure_ralph_labels (--write on): created the 4 missing ralph: labels"
+if [[ "$created" -eq 7 ]] && $have_all; then
+  pass "ensure_ralph_labels (--write on): created the 7 missing ralph: labels"
 else
   fail "ensure create wrong: creates=$created have_all=$have_all"
 fi

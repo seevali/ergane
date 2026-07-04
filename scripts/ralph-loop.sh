@@ -87,6 +87,7 @@ PLAN_ONLY=false                # --plan-only: run Phase 0 then stop (human revie
 EPIC_EXPLICIT=false            # True once --epic is passed (for --issue/--epic mutual exclusion).
 STORIES_EXPLICIT=false         # True once --stories is passed (Path A derives it).
 ARCHITECTURE_MODE="auto"       # auto|always|never — whether Phase 0 runs the architecture step.
+TRIAGE_MODE="auto"             # auto|always|never — readiness pre-phase (issue #2 Idea 4) run before Phase 0. `never` restores pre-triage behavior.
 
 # ──── Round-trip (GitHub write-back) defaults ────
 # Write-back (branch, draft PR, self-updating comment, verdict-gated labels) is
@@ -146,6 +147,13 @@ Path A (intake) flags:
   --architecture MODE      Whether Phase 0 runs the architecture step: auto|always|never
                            (default: auto — runs for non-bugs with a design/arch/rfc label
                            or a long body)
+  --triage MODE            Readiness pre-phase (issue #2 Idea 4) run BEFORE Phase 0:
+                           auto|always|never (default: auto). It deterministically scores
+                           the issue, labels its stage (ralph:ready / ralph:needs-triage /
+                           ralph:blocked), posts clarifying questions when underspecified,
+                           and promotes only `ready` issues into Phase 0. `never` restores
+                           pre-triage behavior. The gate applies even with --write OFF —
+                           the classification is logged, but labels/comments stay dry.
   --model-pm MODEL         Model for the PRD agent (default: opus)
   --model-architect MODEL  Model for the architecture agent (default: opus)
   --model-planner MODEL    Model for the epic/story breakdown agent (default: sonnet)
@@ -205,6 +213,7 @@ while [[ $# -gt 0 ]]; do
     --repo)                        REPO_SLUG="$2"; shift 2 ;;
     --plan-only)                   PLAN_ONLY=true; shift ;;
     --architecture)                ARCHITECTURE_MODE="$2"; shift 2 ;;
+    --triage)                      TRIAGE_MODE="$2"; shift 2 ;;
     --model-pm)                    MODEL_PM="$2"; shift 2 ;;
     --model-architect)             MODEL_ARCHITECT="$2"; shift 2 ;;
     --model-planner)               MODEL_PLANNER="$2"; shift 2 ;;
@@ -239,6 +248,7 @@ if [[ -n "$ISSUE_NUMBER" ]]; then
   $EPIC_EXPLICIT && { echo -e "${RED}Error: --issue and --epic are mutually exclusive (Path A derives the epic from the issue)${NC}"; usage; }
   $STORIES_EXPLICIT && echo -e "${YELLOW}Warning: --stories is ignored in Path A (intake); all generated stories are run${NC}"
   case "$ARCHITECTURE_MODE" in auto|always|never) ;; *) echo -e "${RED}Error: --architecture must be auto|always|never (got '$ARCHITECTURE_MODE')${NC}"; usage ;; esac
+  case "$TRIAGE_MODE" in auto|always|never) ;; *) echo -e "${RED}Error: --triage must be auto|always|never (got '$TRIAGE_MODE')${NC}"; usage ;; esac
 else
   # Path B: the existing required-args contract (defaults are baked in, so these
   # only fire if a user explicitly blanks one out).
@@ -1979,6 +1989,13 @@ upsert_issue_comment() {
 #   ralph:needs-fix  — latest review verdict was REVIEW_FAILED (the loop is fixing it)
 #   ralph:in-review  — latest review verdict was REVIEW_PASSED (ready for a human)
 #   ralph:done       — every story green (set at main()'s completion section)
+# Three STAGE labels arrived with issue #2 (Triage / Idea 4) and share this same single
+# `ralph:` status namespace, so the array below is now SEVEN (four build + three stage):
+#   ralph:ready         — Triage promoted the issue into Phase 0
+#   ralph:needs-triage  — Triage found it underspecified (clarifying questions posted)
+#   ralph:blocked       — Triage flagged it out-of-scope/duplicate (a human decides; I3)
+# Keeping them in ONE array preserves the "exactly ONE ralph: label at a time" invariant
+# GLOBALLY — set_issue_label removes every OTHER array label in its single-edit transition.
 # The per-story labels are driven off the SAME first-line REVIEW_PASSED/REVIEW_FAILED
 # contract that is_review_passed() reads — wired at the existing verdict decision points
 # in main(). This is issue #1's NARROW machine only; the richer triage / loop:* state
@@ -2004,7 +2021,7 @@ upsert_issue_comment() {
 # offline smoke (tests/slice-d-verdict-labels-smoke.sh), so keep self-contained: reference
 # only GITHUB_WRITE, ISSUE_NUMBER, REPO_SLUG, REPO_ROOT, the gh_label_op helper, gh, and log_*.
 # >>> RALPH ISSUE LABEL (issue #1 slice d) — do not remove the sentinels >>>
-RALPH_STATUS_LABELS=(ralph:building ralph:needs-fix ralph:in-review ralph:done)
+RALPH_STATUS_LABELS=(ralph:building ralph:needs-fix ralph:in-review ralph:done ralph:ready ralph:needs-triage ralph:blocked)
 
 _resolve_repo_slug() {
   # OWNER/NAME via the --repo global, else `gh repo view` (a READ) — exactly as
@@ -2017,7 +2034,8 @@ _resolve_repo_slug() {
 }
 
 ensure_ralph_labels() {
-  # Idempotently ensure the four ralph: status labels EXIST in the repo, so a live
+  # Idempotently ensure the seven ralph: status labels EXIST in the repo (four build +
+  # three stage labels added by issue #2 Triage), so a live
   # --write-on `gh issue edit --add-label` can never fail on a missing label (the offline
   # smoke can't catch that — same live-path caveat as slice b's `gh pr create` and slice
   # c's `gh api PATCH`). Reads (label list) are ungated; creates funnel through gh_label_op
@@ -2180,6 +2198,342 @@ mark_issue_pr_ready() {
   return 0
 }
 # <<< RALPH ISSUE READY <<<
+
+# ──── Triage before toil (issue #2, Idea 4 — the judgment gate) ────
+# A readiness PRE-PHASE that runs BEFORE Phase 0 in Path A. It deterministically
+# classifies the issue (ready | needs-info | wontfix-candidate | excluded), records
+# the classification to a LOCAL ledger, labels the issue's stage, posts clarifying
+# questions when it is underspecified, and promotes ONLY `ready` issues into Phase 0.
+# Everything here is ADDITIVE — the existing loop semantics are untouched — and it is
+# the cheapest guard against the loop confidently BUILDING THE WRONG THING once
+# write-back (issue #1) exists. See prd.md §3 Idea 4, §5, §6; issue 04-triage-before-toil.
+#
+# Invariant mapping (ADR-001):
+#   I1 — --write default-off: every GitHub WRITE funnels through gh_comment_op /
+#        gh_label_op (via set_issue_label / ensure_ralph_labels); with --write off the
+#        stage is DARK — classification is still logged and the local ledger still
+#        appended, but labels/comments are dry no-ops. The gate (promote/park) applies
+#        regardless of --write, so read-only runs still refuse to build unready issues.
+#   I2 — idempotency: the triage comment is ONE comment, found by its BEGIN marker and
+#        edited in place (distinct TRIAGE fences, independent of slice-c's build-status
+#        comment); the stage label is a single-edit transition; a re-run of a promoted
+#        (ralph:ready) issue makes ZERO writes.
+#   I3 — the loop NEVER closes: a wontfix-candidate is flagged for a human, never closed.
+#
+# Sourced standalone (alongside the RALPH WRITE GUARDS block for gh_comment_op/gh_label_op,
+# and the RALPH ISSUE LABEL block for set_issue_label/ensure_ralph_labels/_resolve_repo_slug)
+# by the offline smoke (tests/idea4-triage-smoke.sh), so keep self-contained: reference only
+# GITHUB_WRITE, ISSUE_NUMBER, REPO_SLUG, REPO_ROOT, TRIAGE_MODE, EPIC_FILE, the
+# gh_comment_op/gh_label_op helpers, set_issue_label, ensure_ralph_labels, _resolve_repo_slug,
+# gh/jq, and log_*.
+# >>> RALPH TRIAGE (issue #2) — do not remove the sentinels >>>
+RALPH_TRIAGE_BEGIN='<!-- RALPH:TRIAGE:BEGIN -->'
+RALPH_TRIAGE_END='<!-- RALPH:TRIAGE:END -->'
+
+triage_classify() {
+  # PURE deterministic classifier — the "deterministic given the issue content" AC.
+  # No global reads, no file reads, no gh, no randomness: same inputs ⇒ byte-identical
+  # output. Inputs are the whole argument vector:
+  #   $1 title   $2 body   $3 labels (newline-separated)
+  # stdout:
+  #   line 1     : ready | needs-info | wontfix-candidate | excluded
+  #   then 0+    : "reason: …" lines (why it classified that way)
+  #   then 0+    : "question: …" lines (needs-info only, derived from MISSING signals)
+  local title="$1" body="$2" labels="$3"
+
+  local labels_lc title_lc
+  labels_lc="$(printf '%s' "$labels" | tr '[:upper:]' '[:lower:]')"
+  title_lc="$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]')"
+
+  # Case-insensitive whole-label test against the newline-separated label list.
+  _triage_has_label() { grep -qxF "$1" <<< "$labels_lc"; }
+
+  # ── Rule 1: roadmap → excluded (scan-exclusion guard, prd.md §6) ──
+  if _triage_has_label roadmap; then
+    printf 'excluded\n'
+    printf 'reason: carries the roadmap label — a planning issue the loop must not act on; a human promotes it by adding ralph:ready.\n'
+    return 0
+  fi
+
+  # ── Rule 2: wontfix / duplicate / invalid → wontfix-candidate ──
+  if _triage_has_label wontfix || _triage_has_label duplicate || _triage_has_label invalid; then
+    printf 'wontfix-candidate\n'
+    printf 'reason: labelled wontfix/duplicate/invalid — looks out-of-scope or already-handled; a human decides (the loop never closes, I3).\n'
+    return 0
+  fi
+
+  # ── Rule 3: score readiness (integers only — no floats) ──
+  # Trim leading/trailing whitespace, then measure length (internal spaces kept).
+  local body_trimmed
+  body_trimmed="$body"
+  body_trimmed="${body_trimmed#"${body_trimmed%%[![:space:]]*}"}"
+  body_trimmed="${body_trimmed%"${body_trimmed##*[![:space:]]}"}"
+  local body_len=${#body_trimmed}
+  local body_lc
+  body_lc="$(printf '%s' "$body" | tr '[:upper:]' '[:lower:]')"
+
+  # Signals (recorded so the questions can be derived from the ones that are MISSING).
+  local has_len140=false has_len400=false has_md=false has_accept=false
+  local has_title20=false is_question=false has_bug=false has_repro=false
+  [[ $body_len -ge 140 ]] && has_len140=true
+  [[ $body_len -ge 400 ]] && has_len400=true
+  grep -qE '^#|^[-*] |^[[:space:]]*[-*] \[[ xX]\]' <<< "$body" && has_md=true
+  # Word-boundary (\b) anchored so short keywords match only as whole words — otherwise
+  # 'repro' hits reprogram/reprocess and 'goal' hits goalkeeper, scoring unrelated prose as
+  # an acceptance-criteria signal and false-promoting an underspecified issue into Phase 0.
+  grep -qE '\b(acceptance|expected|criteria|steps to reproduce|repro|goal|so that|in order to)\b' <<< "$body_lc" && has_accept=true
+  [[ ${#title} -ge 20 ]] && has_title20=true
+  { [[ "$title" == *'?' ]] || grep -qE '^(how|why|what|help|question)([^a-z]|$)' <<< "$title_lc"; } && is_question=true
+  _triage_has_label bug && has_bug=true
+  grep -qE '\b(steps to reproduce|repro)\b' <<< "$body_lc" && has_repro=true
+
+  local score=0
+  $has_len140 && score=$((score + 2))
+  $has_len400 && score=$((score + 1))
+  $has_md     && score=$((score + 2))
+  $has_accept && score=$((score + 2))
+  $has_title20 && score=$((score + 1))
+  $is_question && score=$((score - 3))
+
+  if [[ $score -ge 5 ]]; then
+    printf 'ready\n'
+    printf 'reason: readiness score %s (>= 5 promotes) — the issue carries enough structure and detail to plan.\n' "$score"
+    return 0
+  fi
+
+  # ── needs-info: emit the questions derived from MISSING signals, fixed order ──
+  printf 'needs-info\n'
+  printf 'reason: readiness score %s (< 5) — underspecified; clarifying questions below.\n' "$score"
+  $has_len140 || printf 'question: The issue body is very brief — can you describe the problem or goal in more detail?\n'
+  $has_accept || printf 'question: What does success look like? Please add expected behavior or acceptance criteria.\n'
+  { $has_bug && ! $has_repro; } && printf 'question: Can you add steps to reproduce?\n'
+  $has_md || printf "question: A short bullet list of what's in and out of scope would help the loop plan this.\n"
+  return 0
+}
+
+splice_triage_block() {
+  # PURE fail-closed splice against the TRIAGE fences (a local copy of slice-c's
+  # whole-line-anchored splicer, so this block stays standalone-sourceable). Replace
+  # the single fenced region in an existing comment body with a freshly rendered block,
+  # preserving every byte OUTSIDE the fences.
+  #   $1 existing-body file   $2 new-block file
+  # Emits the spliced body on stdout, returns 0. FAIL CLOSED: unless the body holds
+  # EXACTLY one BEGIN and one END marker (each on its own line) with BEGIN strictly
+  # before END, write NOTHING and return 1.
+  local existing="$1" block="$2"
+  local begin_n end_n begin_line end_line
+  begin_n="$(grep -c "^${RALPH_TRIAGE_BEGIN}$" "$existing" 2>/dev/null || true)"
+  end_n="$(grep -c "^${RALPH_TRIAGE_END}$" "$existing" 2>/dev/null || true)"
+  if [[ "$begin_n" != "1" || "$end_n" != "1" ]]; then
+    return 1
+  fi
+  begin_line="$(grep -n "^${RALPH_TRIAGE_BEGIN}$" "$existing" | cut -d: -f1)"
+  end_line="$(grep -n "^${RALPH_TRIAGE_END}$" "$existing" | cut -d: -f1)"
+  if [[ "$begin_line" -ge "$end_line" ]]; then
+    return 1
+  fi
+  head -n "$((begin_line - 1))" "$existing"
+  cat "$block"
+  tail -n "+$((end_line + 1))" "$existing"
+}
+
+upsert_triage_comment() {
+  # Create-or-edit the loop's ONE triage comment carrying the classification + clarifying
+  # questions, wrapped in the TRIAGE fences (distinct from slice-c's build-status fences,
+  # so the two comments converge independently). Best-effort: every path returns 0 so a
+  # comment hiccup never fails the gate. Idempotent + fail-closed (I2). Body-by-file always.
+  #   $1 classification   $2 full triage_classify output (line 1 + reason:/question: lines)
+  local classification="$1" classify_out="$2"
+
+  # ── Render the fenced body from LOCAL args only (pure) ──
+  local block_file; block_file="$(mktemp)"
+  {
+    printf '%s\n' "$RALPH_TRIAGE_BEGIN"
+    printf '**🤖 Ralph Loop — triage** · issue #%s\n\n' "$ISSUE_NUMBER"
+    printf '**Classification:** `%s`\n' "$classification"
+    # reason: lines → bullets
+    local had_reason=false
+    while IFS= read -r line; do
+      case "$line" in
+        reason:\ *)
+          $had_reason || { printf '\nWhy:\n'; had_reason=true; }
+          printf -- '- %s\n' "${line#reason: }" ;;
+      esac
+    done <<< "$classify_out"
+    # question: lines → numbered list
+    local qn=0 line
+    while IFS= read -r line; do
+      case "$line" in
+        question:\ *)
+          [[ $qn -eq 0 ]] && printf '\nPlease edit the issue to answer these so the loop can build it:\n'
+          qn=$((qn + 1))
+          printf '%s. %s\n' "$qn" "${line#question: }" ;;
+      esac
+    done <<< "$classify_out"
+    printf '%s\n' "$RALPH_TRIAGE_END"
+  } > "$block_file"
+
+  # ── --write OFF: dry no-op — emit the intended write through the guarded helper ──
+  if [[ "${GITHUB_WRITE:-0}" != "1" ]]; then
+    gh_comment_op issue comment "$ISSUE_NUMBER" --body-file "$block_file"
+    log_info "[triage] dry-run: triage comment not posted/edited (enable with --write)"
+    rm -f "$block_file"
+    return 0
+  fi
+
+  # ── Resolve OWNER/NAME (the --repo global, else `gh repo view` — a READ) ──
+  local slug; slug="$(_resolve_repo_slug)"
+  if [[ -z "$slug" ]]; then
+    log_warn "[triage] could not resolve repo slug — skipping triage comment"
+    rm -f "$block_file"; return 0
+  fi
+
+  # ── Find the loop's existing triage comment by the BEGIN marker (READ — ungated) ──
+  local comments_json existing_url
+  comments_json="$(gh issue view "$ISSUE_NUMBER" --repo "$slug" --json comments 2>/dev/null || true)"
+  existing_url=""
+  if [[ -n "$comments_json" ]]; then
+    existing_url="$(printf '%s' "$comments_json" \
+      | jq -r --arg m "$RALPH_TRIAGE_BEGIN" 'first(.comments[]? | select(.body | contains($m))) | .url // ""' 2>/dev/null || true)"
+  fi
+
+  local body_file; body_file="$(mktemp)"
+
+  if [[ -z "$existing_url" ]]; then
+    # ── No existing comment → CREATE one (body IS the rendered block) ──
+    cp "$block_file" "$body_file"
+    if gh_comment_op issue comment "$ISSUE_NUMBER" --repo "$slug" --body-file "$body_file"; then
+      log_success "[triage] posted triage comment (${classification})"
+    else
+      log_error "[triage] failed to post triage comment — continuing"
+    fi
+    rm -f "$block_file" "$body_file"
+    return 0
+  fi
+
+  # ── Existing comment found → EDIT in place, splicing only the fenced region ──
+  local existing_file; existing_file="$(mktemp)"
+  printf '%s' "$comments_json" \
+    | jq -r --arg m "$RALPH_TRIAGE_BEGIN" 'first(.comments[]? | select(.body | contains($m))) | .body // ""' \
+      2>/dev/null > "$existing_file" || true
+  if ! splice_triage_block "$existing_file" "$block_file" > "$body_file"; then
+    log_warn "[triage] managed fences missing/duplicated/unbalanced — aborting edit (fail-closed), continuing"
+    rm -f "$block_file" "$body_file" "$existing_file"
+    return 0
+  fi
+  local cid="${existing_url##*issuecomment-}"
+  if [[ -z "$cid" || "$cid" == "$existing_url" ]]; then
+    log_warn "[triage] could not derive comment id from '$existing_url' — aborting edit (fail-closed)"
+    rm -f "$block_file" "$body_file" "$existing_file"
+    return 0
+  fi
+  if gh_comment_op api --method PATCH "repos/${slug}/issues/comments/${cid}" -F body=@"$body_file"; then
+    log_success "[triage] updated triage comment in place (${classification})"
+  else
+    log_error "[triage] failed to update triage comment — continuing"
+  fi
+  rm -f "$block_file" "$body_file" "$existing_file"
+  return 0
+}
+
+triage_ledger_append() {
+  # Measurability AC: append `<epoch>\t<issue>\t<classification>` to
+  # $REPO_ROOT/.ralph/triage-ledger.tsv — the raw data for offline triage-precision
+  # measurement (% of `ready` issues whose PR later merges; computed by a human).
+  # LOCAL state, written REGARDLESS of --write; `.ralph/` is gitignored. Best-effort.
+  local classification="$1"
+  local dir="$REPO_ROOT/.ralph"
+  mkdir -p "$dir" 2>/dev/null || true
+  printf '%s\t%s\t%s\n' "$(date +%s)" "$ISSUE_NUMBER" "$classification" >> "$dir/triage-ledger.tsv" 2>/dev/null || true
+  return 0
+}
+
+triage_park() {
+  # Mirror phase0_park's shape, triage-flavored: log the reason + what the human should
+  # do next, then exit 2. No progress file exists at triage time, so nothing to refresh.
+  local msg="$1"
+  log_error "[Triage] $msg"
+  log_error "[Triage] Answer the clarifying questions on the issue, then re-run with --triage always after editing — or bypass triage entirely with --triage never."
+  exit 2
+}
+
+run_triage_phase() {
+  # The orchestrator: classify → ledger → label the stage → promote or park.
+  # 1. --triage never → skip entirely.
+  if [[ "${TRIAGE_MODE:-auto}" == "never" ]]; then
+    log_info "[Triage] skipped (--triage never)"
+    return 0
+  fi
+  # 2. Epic already present → the issue was promoted once; Phase 0 will resume.
+  if [[ -f "$EPIC_FILE" ]]; then
+    log_info "[Triage] epic already exists — issue already promoted; resuming into Phase 0."
+    return 0
+  fi
+  # 3. Pre-flight gh (exactly like run_intake_phase), resolve the repo slug.
+  command -v gh >/dev/null 2>&1 || {
+    log_error "Path A (--issue) requires the GitHub CLI 'gh' on PATH. Install: https://cli.github.com/"; exit 1; }
+  if ! gh auth status >/dev/null 2>&1; then
+    log_error "Path A: 'gh' is not authenticated. Run: gh auth login"; exit 1
+  fi
+  local slug; slug="$(_resolve_repo_slug)"
+  [[ -z "$slug" ]] && triage_park "could not determine the GitHub repo — pass --repo OWNER/NAME (or set a default with: gh repo set-default)."
+
+  # 4. Fetch the issue (a READ — ungated).
+  local issue_json
+  issue_json="$(gh issue view "$ISSUE_NUMBER" --repo "$slug" --json title,body,labels 2>/dev/null)" \
+    || triage_park "could not fetch issue #${ISSUE_NUMBER} from ${slug}. Does it exist and is it accessible to your gh account?"
+  [[ -z "$issue_json" ]] && triage_park "empty response fetching issue #${ISSUE_NUMBER} from ${slug}."
+
+  local title body labels
+  title="$(printf '%s' "$issue_json" | jq -r '.title // ""')"
+  body="$(printf '%s' "$issue_json" | jq -r '.body // ""')"
+  labels="$(printf '%s' "$issue_json" | jq -r '.labels[]?.name // empty')"
+
+  # 5. Fast-path (I2 converge): already promoted (ralph:ready) and mode != always → proceed
+  #    into Phase 0 with ZERO writes.
+  if [[ "${TRIAGE_MODE:-auto}" != "always" ]] && grep -qxF 'ralph:ready' <<< "$labels"; then
+    log_info "[Triage] issue #${ISSUE_NUMBER} already promoted (ralph:ready) — into Phase 0 (no writes)."
+    return 0
+  fi
+
+  # 6. Classify (pure), log the verdict + each reason, append the local ledger row.
+  local classify_out classification
+  classify_out="$(triage_classify "$title" "$body" "$labels")"
+  classification="${classify_out%%$'\n'*}"
+  log_info "[Triage] issue #${ISSUE_NUMBER} classified: ${classification}"
+  local rline
+  while IFS= read -r rline; do
+    [[ -z "$rline" ]] && continue
+    log_dim "[Triage] ${rline}"
+  done < <(printf '%s\n' "$classify_out" | tail -n +2)
+  triage_ledger_append "$classification"
+
+  # 7. Act on the classification.
+  case "$classification" in
+    ready)
+      ensure_ralph_labels
+      set_issue_label "ralph:ready"
+      log_success "[Triage] issue #${ISSUE_NUMBER} is ready — promoting into Phase 0."
+      return 0 ;;
+    needs-info)
+      upsert_triage_comment "$classification" "$classify_out"
+      ensure_ralph_labels
+      set_issue_label "ralph:needs-triage"
+      triage_park "issue #${ISSUE_NUMBER} is underspecified — clarifying questions posted; not building." ;;
+    wontfix-candidate)
+      upsert_triage_comment "$classification" "$classify_out"
+      ensure_ralph_labels
+      set_issue_label "ralph:blocked"
+      triage_park "issue #${ISSUE_NUMBER} looks out-of-scope/duplicate — flagged ralph:blocked; a human decides (the loop never closes, I3)." ;;
+    excluded)
+      # roadmap: the loop must NOT touch its own planning issues — ZERO labels, ZERO
+      # comments (only the local ledger row above, which is fine). Human promotes it.
+      triage_park "issue #${ISSUE_NUMBER} carries the roadmap label — excluded from the loop; a human promotes it deliberately by adding ralph:ready." ;;
+    *)
+      triage_park "issue #${ISSUE_NUMBER} could not be classified ('${classification}') — not building." ;;
+  esac
+}
+# <<< RALPH TRIAGE <<<
 
 # ════════════════════════════════════════════════════════════════
 # Main Loop
@@ -2857,6 +3211,11 @@ fi
 # available to the planning agents; main() will no-op its own build call.
 if [[ -n "$ISSUE_NUMBER" ]]; then
   build_system_prompts
+  # Idea 4, issue #2: the judgment gate — only ralph:ready work is promoted into Phase 0
+  # (needs-info/wontfix-candidate/excluded issues are labelled + parked, never built);
+  # see prd.md §3 Idea 4. Runs before run_intake_phase so no build tokens are spent on
+  # unready issues. `--triage never` bypasses it (pre-triage behavior).
+  run_triage_phase
   run_intake_phase          # fetch issue → PRD → (architecture) → epic; sets EPIC_FILE/PRD_FILE/ARCH_FILE
   finalize_story_plan       # now the epic exists → expand stories + init tracking arrays
 
@@ -2885,7 +3244,7 @@ if [[ -n "$ISSUE_NUMBER" ]]; then
   # no-op with --write off. Per-story 🟡 and final 🟢 updates edit this same comment.
   upsert_issue_comment planning
 
-  # Slice d (issue #1): ensure the four ralph: status labels exist (so a live
+  # Slice d (issue #1): ensure the ralph: status labels exist (so a live
   # --write-on add-label can't fail on a missing label), then mark the build started
   # (ralph:building). Build start lives HERE, beside the 🔵 planning comment, so the
   # label and the comment cross the Rubicon together. Verdict-gated per-story labels

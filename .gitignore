@@ -17,6 +17,9 @@ _bmad/
 # Ralph loop run artifacts
 scripts/logs/
 
+# Triage ledger — local, per-run measurement data (issue #2 Idea 4); not committed
+.ralph/
+
 # Environment
 .env
 .env.local
