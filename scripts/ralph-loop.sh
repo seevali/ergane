@@ -88,6 +88,7 @@ EPIC_EXPLICIT=false            # True once --epic is passed (for --issue/--epic 
 STORIES_EXPLICIT=false         # True once --stories is passed (Path A derives it).
 ARCHITECTURE_MODE="auto"       # auto|always|never — whether Phase 0 runs the architecture step.
 TRIAGE_MODE="auto"             # auto|always|never — readiness pre-phase (issue #2 Idea 4) run before Phase 0. `never` restores pre-triage behavior.
+USE_WORKTREE=0                 # 0 = run in the main tree (default). 1 = --worktree: isolate the issue run in .ralph/worktrees/issue-N (issue #4). Valid only with --issue.
 
 # ──── Round-trip (GitHub write-back) defaults ────
 # Write-back (branch, draft PR, self-updating comment, verdict-gated labels) is
@@ -154,6 +155,16 @@ Path A (intake) flags:
                            and promotes only `ready` issues into Phase 0. `never` restores
                            pre-triage behavior. The gate applies even with --write OFF —
                            the classification is logged, but labels/comments stay dry.
+  --worktree               Run this issue inside its own git worktree so the main
+                           working tree stays clean and back-to-back issue runs never
+                           trample each other (issue #4). The worktree lives INSIDE the
+                           repo at .ralph/worktrees/issue-N (gitignored) — never a sibling
+                           `../` dir, honoring the self-contained-repo guardrail. Planning
+                           artifacts stay readable from the main tree at
+                           .ralph/worktrees/issue-N/docs/…. On a fully-green run the tree is
+                           removed (the branch ralph/issue-N is kept for review); a crash,
+                           park, or --plan-only KEEPS the tree, and re-running the same
+                           --issue N --worktree command RESUMES it. Requires --issue.
   --model-pm MODEL         Model for the PRD agent (default: opus)
   --model-architect MODEL  Model for the architecture agent (default: opus)
   --model-planner MODEL    Model for the epic/story breakdown agent (default: sonnet)
@@ -214,6 +225,7 @@ while [[ $# -gt 0 ]]; do
     --plan-only)                   PLAN_ONLY=true; shift ;;
     --architecture)                ARCHITECTURE_MODE="$2"; shift 2 ;;
     --triage)                      TRIAGE_MODE="$2"; shift 2 ;;
+    --worktree)                    USE_WORKTREE=1; shift ;;
     --model-pm)                    MODEL_PM="$2"; shift 2 ;;
     --model-architect)             MODEL_ARCHITECT="$2"; shift 2 ;;
     --model-planner)               MODEL_PLANNER="$2"; shift 2 ;;
@@ -253,6 +265,7 @@ else
   # Path B: the existing required-args contract (defaults are baked in, so these
   # only fire if a user explicitly blanks one out).
   $PLAN_ONLY && { echo -e "${RED}Error: --plan-only requires --issue (it stops after the Phase 0 plan, which only Path A runs)${NC}"; usage; }
+  [[ "$USE_WORKTREE" == "1" ]] && { echo -e "${RED}Error: --worktree requires --issue (it isolates a Path A issue run in its own git worktree)${NC}"; usage; }
   [[ -z "$EPIC_FILE" ]]   && { echo -e "${RED}Error: --epic is required${NC}"; usage; }
   [[ -z "$STORIES_ARG" ]] && { echo -e "${RED}Error: --stories is required${NC}"; usage; }
 fi
@@ -412,6 +425,14 @@ ITERATION_COUNT=0
 STORIES_COMPLETED=0
 CURRENT_STORY_IDX=-1
 INTERRUPTED=false
+# Worktree teardown gate (issue #4). RALPH_ALL_GREEN is flipped to 1 only inside
+# main()'s all-green completion block; the EXIT trap (registered by
+# ensure_issue_worktree in --worktree mode) removes the worktree ONLY when it is 1
+# AND the run exits 0 — so a crash, park, or --plan-only keeps the tree for resume.
+# RALPH_MAIN_ROOT holds the pre-re-point repo root; ensure_issue_worktree sets it,
+# and the triage ledger + worktree teardown paths read it (empty until then).
+RALPH_ALL_GREEN=0
+RALPH_MAIN_ROOT=""
 TOTAL_COST="0"
 TOTAL_INPUT_TOKENS=0
 TOTAL_OUTPUT_TOKENS=0
@@ -1713,6 +1734,15 @@ ensure_issue_branch() {
 # auto-merge, never auto-close (I3) — the PR stays a draft here; readying it is the
 # finish step.
 #
+# Branch-based recovery (issue #4 hardening): docs/prd/issue-N-pr.txt is UNTRACKED,
+# so a successful --worktree run removes the tree (git worktree remove --force) and
+# discards it. Without recovery, a later --write-on re-run would see no recorded URL
+# and call `gh pr create` on a branch that ALREADY has a PR → a hard `gh` failure.
+# So, on the --write-ON path only (after the --write-off dry return, keeping --write
+# off byte-identical), before creating we ask GitHub whether this branch already has
+# a PR via an UNGATED read (`gh pr view <branch> --json url`); if so we re-persist
+# the URL and reuse it instead of creating a duplicate.
+#
 # `gh pr create` funnels through gh_pr_op (the slice-1 guarded helper); the branch
 # push goes through _git_push_guarded (the same gate, but git is not a gh command).
 # gh-only, no octokit/REST (design §6).
@@ -1799,6 +1829,26 @@ ensure_issue_pr() {
     gh_pr_op pr create --draft --base main --head "$branch" \
       --title "$title" --body-file "$body_file"
     log_info "[pr] dry-run: branch not pushed, draft PR not opened (enable with --write)"
+    return 0
+  fi
+
+  # ── Branch-based PR recovery (issue #4 idempotency hardening) ──
+  # No usable recorded URL reached this point (the reuse block above would have
+  # returned otherwise). Before creating, ask GitHub whether this branch already has
+  # an OPEN PR — an UNGATED read (`gh pr view` accepts a branch selector). We filter
+  # on state==OPEN deliberately: `gh pr create` only fails when an OPEN PR already
+  # exists for the head, so that is the only case recovery must cover. A MERGED/CLOSED
+  # PR must NOT be resurrected here — `gh pr view <branch>` resolves a branch's PR
+  # regardless of state, and reusing a merged/closed one would skip create and leave a
+  # re-run's new commits with NO open reviewable PR. This sits AFTER the --write-off
+  # dry return above, so with --write off it never runs and parity stays byte-
+  # identical. Found (OPEN) → re-persist the URL and reuse (idempotent); otherwise →
+  # fall through to create exactly as before.
+  local recovered
+  recovered="$(gh pr view "$branch" --json url,state -q 'select(.state == "OPEN") | .url' 2>/dev/null)" || true
+  if [[ -n "$recovered" ]]; then
+    printf '%s\n' "$recovered" > "$pr_file"
+    log_info "[pr] recovered existing OPEN PR (idempotent): $recovered (recorded → $pr_file)"
     return 0
   fi
 
@@ -2442,7 +2492,11 @@ triage_ledger_append() {
   # measurement (% of `ready` issues whose PR later merges; computed by a human).
   # LOCAL state, written REGARDLESS of --write; `.ralph/` is gitignored. Best-effort.
   local classification="$1"
-  local dir="$REPO_ROOT/.ralph"
+  # Prefer the MAIN root so the ledger stays central even after --worktree re-points
+  # REPO_ROOT into the worktree (issue #4). RALPH_MAIN_ROOT is empty in non-worktree
+  # runs, so this falls back to REPO_ROOT — unchanged behavior. Either way .ralph/ is
+  # gitignored.
+  local dir="${RALPH_MAIN_ROOT:-$REPO_ROOT}/.ralph"
   mkdir -p "$dir" 2>/dev/null || true
   printf '%s\t%s\t%s\n' "$(date +%s)" "$ISSUE_NUMBER" "$classification" >> "$dir/triage-ledger.tsv" 2>/dev/null || true
   return 0
@@ -2813,6 +2867,157 @@ update_issue_pr_body() {
   return 0
 }
 # <<< RALPH PR BODY <<<
+
+# ──── Worktree-per-issue (issue #4, Idea 3) ────
+# Each Path A --issue run can execute inside its OWN git worktree so the main
+# working tree is never trampled and its `git status` stays clean throughout (AC 1),
+# so back-to-back issue runs don't collide, and so a crashed run's half-built tree is
+# resumable state rather than contamination of the main tree.
+#
+# DELIBERATE DEVIATION from issue #4's literal body: the issue proposed a SIBLING dir
+# `../ralph-issue-N`. A path outside the repo violates the self-contained-repo
+# guardrail (root CLAUDE.md: never reference `../` or the parent Metis tree) and would
+# pollute the parent tree. Instead the worktree lives INSIDE the repo at
+# .ralph/worktrees/issue-N (`.ralph/` is gitignored since the issue-#2 triage slice).
+# This also makes the artifact seam (AC 4) trivial: planning artifacts are readable
+# from the MAIN tree at .ralph/worktrees/issue-N/docs/… while the main tree's TRACKED
+# status stays clean (the whole subtree is ignored).
+#
+# Parity (AC 5): with --worktree absent (USE_WORKTREE=0) ensure_issue_worktree is a
+# no-op that returns 0 without creating anything, re-pointing anything, or registering
+# any trap — so externally observable behavior is byte-identical to today.
+#
+# Sourced standalone by the offline smoke (tests/idea3-worktree-smoke.sh), so keep
+# self-contained. Dependencies: the re-point READS USE_WORKTREE, ISSUE_NUMBER,
+# REPO_ROOT, PROJECT_DIR_ARG, STORIES_DIR and WRITES RALPH_MAIN_ROOT, REPO_ROOT,
+# PROJECT_DIR, EPIC_FILE, PRD_FILE, STORIES_DIR, MASTER_PROGRESS_FILE; the teardown +
+# EXIT trap READ RALPH_MAIN_ROOT, ISSUE_NUMBER, RALPH_ALL_GREEN; plus git and log_*.
+# >>> RALPH ISSUE WORKTREE (issue #4) — do not remove the sentinels >>>
+ensure_issue_worktree() {
+  # 1. Parity: a no-op unless --worktree was passed (AC 5).
+  [[ "${USE_WORKTREE:-0}" != "1" ]] && return 0
+
+  # 2. Pin the MAIN root (the pre-re-point REPO_ROOT). The worktree teardown, the
+  #    breadcrumb, and the triage ledger all resolve paths against this.
+  RALPH_MAIN_ROOT="$REPO_ROOT"
+  local branch="ralph/issue-${ISSUE_NUMBER}"
+  local wt_dir="$RALPH_MAIN_ROOT/.ralph/worktrees/issue-${ISSUE_NUMBER}"
+
+  git -C "$RALPH_MAIN_ROOT" rev-parse --git-dir >/dev/null 2>&1 || {
+    log_error "[worktree] not a git repository at $RALPH_MAIN_ROOT — cannot create worktree for $branch"; exit 1; }
+
+  # 3. Reaper half of AC 3: reclaim registrations whose worktree dirs were manually
+  #    deleted (e.g. an operator `rm -rf`'d a leaked tree) BEFORE we try to add.
+  git -C "$RALPH_MAIN_ROOT" worktree prune 2>/dev/null || true
+
+  # Conflict guard: the branch is checked out in the MAIN tree (a previous
+  #    non-worktree run left HEAD there). git refuses to add a worktree for an
+  #    already-checked-out branch; surface a clear, actionable hard error.
+  local main_head
+  main_head="$(git -C "$RALPH_MAIN_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [[ "$main_head" == "$branch" ]]; then
+    log_error "[worktree] main tree is on $branch; switch it back to your base branch, then re-run"
+    exit 1
+  fi
+
+  # 4. Resume-or-create.
+  if [[ -d "$wt_dir" ]] && git -C "$wt_dir" rev-parse --git-dir >/dev/null 2>&1; then
+    # Existing, valid worktree → this is the crash-recovery path. A crashed run's
+    # tree holds resumable planning state, NOT garbage — reuse it, never clobber it.
+    local wt_head
+    wt_head="$(git -C "$wt_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [[ "$wt_head" == "$branch" ]]; then
+      log_info "[worktree] resuming existing worktree $wt_dir (HEAD on $branch — crash-recovery state)"
+    else
+      log_error "[worktree] worktree $wt_dir exists but HEAD is '$wt_head', expected $branch — refusing to build"; exit 1
+    fi
+  elif git -C "$RALPH_MAIN_ROOT" show-ref --verify --quiet "refs/heads/$branch"; then
+    # Branch already exists (a prior run created it) but no worktree → attach one.
+    if ! git -C "$RALPH_MAIN_ROOT" worktree add "$wt_dir" "$branch" 2>/dev/null; then
+      log_error "[worktree] could not add worktree $wt_dir for existing branch $branch — refusing to build"; exit 1
+    fi
+    log_success "[worktree] added worktree $wt_dir on existing branch $branch"
+  else
+    # Fresh: create the branch off the current main-tree HEAD (same "off \$current"
+    # semantics as ensure_issue_branch) and attach the worktree in one step.
+    if ! git -C "$RALPH_MAIN_ROOT" worktree add -b "$branch" "$wt_dir" 2>/dev/null; then
+      log_error "[worktree] could not create worktree $wt_dir with new branch $branch — refusing to build"; exit 1
+    fi
+    log_success "[worktree] created worktree $wt_dir with new branch $branch (off ${main_head:-HEAD})"
+  fi
+
+  # 5. Re-point the run INTO the worktree so every claude -p step, every feat(N.k)
+  #    commit, and every `git log` completion grep scopes to this tree automatically.
+  #    Mirror the startup Path A derivation exactly (deferred existence for the epic/
+  #    PRD — Phase 0 writes them; ARCH_FILE is left for run_intake_phase to set).
+  REPO_ROOT="$wt_dir"
+  PROJECT_DIR="$wt_dir/$PROJECT_DIR_ARG"
+  [[ -d "$PROJECT_DIR" ]] || {
+    log_error "[worktree] project dir not found in worktree: $PROJECT_DIR (it must be tracked)"; exit 1; }
+  PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+  EPIC_FILE="$REPO_ROOT/docs/epics/issue-${ISSUE_NUMBER}.md"
+  PRD_FILE="$REPO_ROOT/docs/prd/issue-${ISSUE_NUMBER}.md"
+  # Re-point stories + master progress ONLY if they still hold the startup default
+  # (a System Track run may have overridden STORIES_DIR via env — respect that).
+  if [[ "$STORIES_DIR" == "$RALPH_MAIN_ROOT/docs/stories" ]]; then
+    STORIES_DIR="$REPO_ROOT/docs/stories"
+    MASTER_PROGRESS_FILE="$STORIES_DIR/ralph-sprint-progress.md"
+  fi
+  mkdir -p "$STORIES_DIR"
+  cd "$PROJECT_DIR"
+  # LOG_DIR/LOG_FILE deliberately stay in the MAIN tree so observability outlives the
+  # worktree's removal on teardown.
+
+  # 6. Breadcrumb seam: record the mapping in the MAIN tree, and log the exact
+  #    artifact paths a viewer can read from the main tree while code work happens
+  #    in the worktree (AC 4).
+  local info_file="$RALPH_MAIN_ROOT/.ralph/worktrees/issue-${ISSUE_NUMBER}.info"
+  mkdir -p "$RALPH_MAIN_ROOT/.ralph/worktrees" 2>/dev/null || true
+  {
+    printf 'branch\t%s\n'   "$branch"
+    printf 'worktree\t%s\n' "$wt_dir"
+    printf 'started\t%s\n'  "$(date +%s)"
+  } > "$info_file" 2>/dev/null || true
+  log_info "[worktree] run re-pointed into $wt_dir (branch $branch kept for review)"
+  log_info "[worktree] planning artifacts readable from the main tree at .ralph/worktrees/issue-${ISSUE_NUMBER}/docs/ (epic: .ralph/worktrees/issue-${ISSUE_NUMBER}/docs/epics/issue-${ISSUE_NUMBER}.md)"
+
+  # 7. Register teardown. No prior EXIT trap exists today (only INT/TERM → cleanup),
+  #    and this is registered ONLY in worktree mode, so parity holds when off.
+  trap 'worktree_exit_trap' EXIT
+}
+
+remove_issue_worktree() {
+  # Success-path teardown. Recompute the paths from the globals the run pinned so
+  # this is safe to call from the EXIT trap (a function's locals aren't visible there).
+  local branch="ralph/issue-${ISSUE_NUMBER}"
+  local wt_dir="$RALPH_MAIN_ROOT/.ralph/worktrees/issue-${ISSUE_NUMBER}"
+  local info_file="$RALPH_MAIN_ROOT/.ralph/worktrees/issue-${ISSUE_NUMBER}.info"
+  # --force is DELIBERATE: runtime droppings (e.g. the untracked
+  # docs/prd/issue-N-pr.txt the loop writes) would otherwise block `worktree remove`.
+  # They are recoverable — the PR URL is re-derivable from the branch via
+  # ensure_issue_pr's branch-based recovery — so forcing here is safe.
+  if git -C "$RALPH_MAIN_ROOT" worktree remove --force "$wt_dir" 2>/dev/null; then
+    log_success "[worktree] removed worktree $wt_dir; branch $branch kept for review"
+  else
+    log_warn "[worktree] could not remove $wt_dir (already gone?) — leaving for manual cleanup; branch $branch kept"
+  fi
+  rm -f "$info_file" 2>/dev/null || true
+}
+
+worktree_exit_trap() {
+  # MUST capture the exit code first. Remove the tree ONLY on a fully-green run
+  # (RALPH_ALL_GREEN=1, set by main()'s completion block) that exits 0. Every other
+  # exit — a crash, a park (exit 2), an interrupt (exit 130), or --plan-only (exit 0
+  # but not all-green) — KEEPS the tree so uncommitted plans are never destroyed and
+  # the next `--issue N --worktree` run resumes it.
+  local rc=$?
+  if [[ "${RALPH_ALL_GREEN:-0}" == "1" && "$rc" -eq 0 ]]; then
+    remove_issue_worktree
+  else
+    log_info "[worktree] worktree kept at $RALPH_MAIN_ROOT/.ralph/worktrees/issue-${ISSUE_NUMBER} (rc=$rc, all-green=${RALPH_ALL_GREEN:-0}) — resume with: --issue ${ISSUE_NUMBER} --worktree"
+  fi
+}
+# <<< RALPH ISSUE WORKTREE <<<
 
 # ════════════════════════════════════════════════════════════════
 # Main Loop
@@ -3406,6 +3611,7 @@ SALVAGE_DONE
     # Confessing PR (issue #3, Idea 2): upgrade the PR body to the synthesised body
     # while the PR is still loop-owned (draft) — BEFORE ready. Dry no-op with --write off.
     update_issue_pr_body
+    RALPH_ALL_GREEN=1   # worktree teardown gate (issue #4): the EXIT trap removes the tree only on a fully-green run
     mark_issue_pr_ready
     upsert_issue_comment done
     # Slice d (issue #1): all stories green → terminal ralph:done (single edit, removes
@@ -3493,6 +3699,12 @@ fi
 # available to the planning agents; main() will no-op its own build call.
 if [[ -n "$ISSUE_NUMBER" ]]; then
   build_system_prompts
+  # Issue #4 (Idea 3): if --worktree, re-point this run into .ralph/worktrees/issue-N
+  # BEFORE triage and Phase 0, so ALL planning artifacts (PRD/architecture/epic/stories)
+  # land in the worktree and the main tree stays clean. A no-op without --worktree
+  # (parity, AC 5). Triage writes no repo files — its ledger goes to the MAIN root's
+  # .ralph/ (RALPH_MAIN_ROOT), set here.
+  ensure_issue_worktree
   # Idea 4, issue #2: the judgment gate — only ralph:ready work is promoted into Phase 0
   # (needs-info/wontfix-candidate/excluded issues are labelled + parked, never built);
   # see prd.md §3 Idea 4. Runs before run_intake_phase so no build tokens are spent on
