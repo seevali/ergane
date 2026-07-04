@@ -21,11 +21,13 @@ Synthesize the PR body from artifacts the loop **already produces**, so the PR r
 
 ## Acceptance criteria
 
-- [ ] The PR body contains an "I had to guess" / uncertainties section listing recorded assumptions; when none were recorded, it says so explicitly (never silently empty).
-- [ ] Every shipped story appears with its acceptance criteria mapped to the satisfying commit hash.
-- [ ] The body builder is a **pure function of on-disk artifacts + `git log`** — extractable and testable offline (fixture in → expected markdown out) with no `gh` call.
-- [ ] Re-running regenerates the same body deterministically (idempotent; pairs with Idea 1's `gh pr edit`).
-- [ ] `prd.md` §3 Idea 2 matches shipped behavior (anti-drift DoD).
+**Shipped (2026-07-04):** `render_pr_body()` is a pure function of on-disk artifacts + `git log` (offline fixture smoke proves byte-determinism and zero `gh` calls during render); body lands once via `update_issue_pr_body` in the all-green completion block BEFORE the PR graduates; the body is loop-owned only while the PR is a draft (isDraft guard — human edits on a ready PR are never overwritten); guess extraction uses end-anchored uncertainty headings + colon-required `ASSUMPTION:`/`GUESS:`/`OPEN QUESTION:` labels to avoid confessing completed work.
+
+- [x] The PR body contains an "I had to guess" / uncertainties section listing recorded assumptions; when none were recorded, it says so explicitly (never silently empty).
+- [x] Every shipped story appears with its acceptance criteria mapped to the satisfying commit hash.
+- [x] The body builder is a **pure function of on-disk artifacts + `git log`** — extractable and testable offline (fixture in → expected markdown out) with no `gh` call.
+- [x] Re-running regenerates the same body deterministically (idempotent; pairs with Idea 1's `gh pr edit`).
+- [x] `prd.md` §3 Idea 2 matches shipped behavior (anti-drift DoD).
 
 ## Dependencies & sequencing
 

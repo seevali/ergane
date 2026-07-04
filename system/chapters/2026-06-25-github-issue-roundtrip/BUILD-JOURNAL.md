@@ -102,4 +102,34 @@ The workflow harness had an args-plumbing fault: the implementer received the sp
 
 ---
 
-*(Section for issue #5 Swarm v1 is appended when it lands.)*
+## Idea 5 / issue #5 — The Swarm + Mission Control v1 (landed 2026-07-04, commit `07c1316`)
+
+### Design decisions
+
+1. **Serial by re-exec, not by refactor.** The loop's per-issue machinery (globals, `cd`, tracking arrays) is deeply single-issue; making it loop-internal-multi-issue would have meant surgery on protected regions. Instead the driver re-invokes the script itself (`--issue N --worktree` + the run's forwarded flags), one child at a time. The loop's own idempotency (resume paths at every phase) is what makes a killed queue safely re-runnable. `RALPH_SWARM_CHILD_CMD` is the documented offline-test seam (the smoke substitutes a fake child).
+2. **The dashboard derives; the loop doesn't report.** `ralph-watch.sh` computes rows from what already exists — driver-written status files under `.ralph/jobs/` plus each worktree's sprint-progress file — so the loop gained no reporting subsystem, and the watch surface is strictly read-only (its only writes are brake control files).
+3. **The brake rides the existing seam.** `check_interrupted()` already runs between every step of every story; the brake is an additive block there, active only when the driver exports `RALPH_JOBS_DIR` (standalone runs byte-identical). Pause polls; abort exits with a distinct code (4) the driver maps to `aborted`; Ctrl-C beats pause.
+4. **`ready` mode composes with Triage.** The queue is "open issues labeled `ralph:ready`" — exactly the label Triage (issue #2) promotes — so the roadmap recursion guard (prd.md §6) holds structurally: planning issues can only enter the swarm after a human or Triage deliberately promoted them.
+5. **v2 concurrency deliberately not built.** The driver prints the reviewer-despair guard in every summary; the kill criterion (prd.md §7) is a human judgment, surfaced, not automated.
+
+### What verification caught (all fixed before commit)
+
+1. **BLOCKER — the relative-`$0` child (found independently by BOTH reviewers):** the script `cd`s into `src/` early; the driver later exec'd `$0`, which under the documented `./scripts/ralph-loop.sh --issues …` invocation resolved to the nonexistent `src/scripts/ralph-loop.sh` → rc 127 → every job `failed`, zero PRs. Every offline gate was green because the smoke both sources the driver standalone and overrides the child command — the exact false-green blind spot adversarial review exists for. Fixed: absolute `"$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"` default, guarded so the test seam still works.
+2. **MAJOR — fail-open `ready` queue:** a `gh` auth/network failure was swallowed by `|| true` and reported as "queue is empty", exit 0 — indistinguishable from success. Now fail-closed (error + exit 1), matching the slug-resolution behavior beside it.
+3. **Minor:** whitespace *coalescing* in queue parsing turned the typo `--issues "12 15"` into issue `1215` (!) — now a trim-only cleanup lets the integer gate reject it; and swarm mode no longer trips Path B's demo-epic existence check (it neither needs nor reads the epic).
+4. **Session-limit interruption, handled by design:** the first run of this idea's pipeline lost its edge-case hunter and fixer to an API usage limit. The workflow was resumed after reset — cached implementer/auditor results replayed byte-identically, only the missing stages ran. The blocker above was found by the auditor *before* the interruption and fixed *after* it; nothing was lost. (Recorded because resumable orchestration is itself part of the method's trust story.)
+
+### Outcome
+
+`idea5-swarm-smoke.sh` 27/27 (queue parsing, serial non-overlap, flag forwarding, status lifecycle, brake pause/resume/abort incl. parity-when-unset, watch rendering incl. the stuck glyph, I3); all nine prior smokes green (114 assertions across the suite); `bash -n` on all three scripts; golden byte-identical.
+
+---
+
+## Chapter wrap (2026-07-04)
+
+All five ideas shipped: **#1 Round Trip** (hand-built 2026-06-26) → **#2 Triage** → **#3 Confessing PR** → **#4 Worktree** → **#5 Swarm v1** (multi-agent orchestration, this journal). Cumulative verification tally for Ideas 2–5: **11 findings** (2 blockers-by-severity — the `$0` child exec counted once though found twice — 2 major, 7 minor), **all fixed and regression-tested before their commits**; 0 findings rejected as false positives after code-level re-verification.
+
+**What remains open, deliberately:**
+- The **live `--write`-on dogfood run** — the only thing the offline, network-dark smokes cannot prove (real `gh` write scopes, real PR/comment/label round-trips). It is the chapter's validation gate (prd.md §6) and the tick for each issue's final "PRD matches shipped behavior" box *in the field*.
+- The **merge-as-is rate** measurement (prd.md §7) — begins with that first live run.
+- **Autonomy stays at rung 1** (supervised): nothing here moves the dial; the scheduler/cron rung remains explicitly out of scope.

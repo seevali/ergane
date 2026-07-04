@@ -8,6 +8,20 @@ For forward-looking design documents, browse [`system/chapters/`](system/chapter
 
 ---
 
+## [System] The Swarm + Mission Control v1 (issue #5) — the chapter's capstone, and the chapter closes (2026-07-04)
+
+Closed **issue #5 "The Swarm + Mission Control"** — and with it, all five ideas of the [GitHub Issue Round-Trip & Autonomy chapter](system/chapters/2026-06-25-github-issue-roundtrip/README.md) are built. `--issues 12,15,19` (or `--issues ready`) works a queue of issues **strictly serially** — one child loop invocation per issue, each isolated in its own worktree (issue #4), each producing its own PR (issue #1) — because the bet does not need concurrency to prove itself, and serial-first lets the merge-as-is rate be measured before scaling ([prd.md §3 Idea 5](system/chapters/2026-06-25-github-issue-roundtrip/prd.md)). True parallelism stays a separately-justified v2.
+
+**Mission Control:** `scripts/ralph-watch.sh` renders one row per job (issue, state, story X/Y, elapsed, cost, health glyph) from the per-job status files the driver writes under gitignored `.ralph/jobs/` plus each worktree's progress file — triage, not monitoring: a running job whose files go stale is flagged as the one anomaly worth a look. **The brake shipped in the same increment as the throttle** (the issue's non-negotiable): `ralph-watch.sh pause|resume|abort N` writes a control file the child honors between steps inside `check_interrupted()` — additive, and inert unless the driver exported `RALPH_JOBS_DIR`, so a standalone `--issue` run is byte-identical to before. A failing job never stops the queue (burn-down semantics); the driver's summary prints the reviewer-despair guard (prd.md §7) and the loop still never merges or closes anything (ADR-001 I3).
+
+**Verification earned its keep one last time:** both adversarial reviewers independently found a **blocker** — the driver's default child command was relative `$0`, exec'd after the script's early `cd src/`, so under the documented `./scripts/ralph-loop.sh --issues …` invocation *every* child would have failed rc-127 while all offline gates stayed green (the smoke's test seam bypassed `$0`). Fixed to the absolute `SCRIPT_DIR` path. Also caught and fixed: `ready`-mode `gh` failures masquerading as an empty queue (now fail-closed), queue-token whitespace coalescing, and driver mode needlessly requiring the demo epic. Smoke 27/27; all nine prior smokes green; `--dry-run-prompts` golden byte-identical throughout.
+
+**Chapter status:** five of five ideas shipped — the round trip, the judgment gate, the trust interface, the isolation plumbing, the serial swarm. Built across two methods: issue #1 by hand (2026-06-26), issues #2–#5 by supervised multi-agent orchestration (2026-07-04; method + full decision log in the [BUILD-JOURNAL](system/chapters/2026-06-25-github-issue-roundtrip/BUILD-JOURNAL.md)). **Still open:** the live `--write`-on dogfood run — the one thing offline smokes cannot prove — which remains the chapter's validation gate before the autonomy dial climbs (prd.md §6).
+
+[Issue #5 spec](system/chapters/2026-06-25-github-issue-roundtrip/issues/05-swarm-mission-control.md) | [smoke](system/chapters/2026-06-25-github-issue-roundtrip/tests/idea5-swarm-smoke.sh) | [ralph-watch.sh](scripts/ralph-watch.sh) | commit `07c1316`
+
+---
+
 ## [System] Worktree-per-Issue (issue #4) — isolation plumbing (2026-07-04)
 
 Closed **issue #4 "Worktree-per-Issue"** — with `--worktree` (Path A only, default off), an issue run executes entirely inside its own `git worktree`, so runs never trample the main working tree, a crashed run's half-built state stays quarantined and resumable, and the Swarm (issue #5) has the isolation it stands on ([prd.md §3 Idea 3](system/chapters/2026-06-25-github-issue-roundtrip/prd.md)).

@@ -118,6 +118,9 @@ opus (PRD/architecture) and sonnet (story breakdown); override with `--model-pm`
 | `--issue N` | Path A: plan from GitHub issue N, then build |
 | `--repo OWNER/NAME` | Repo to read the issue from (default: `gh repo view`) |
 | `--plan-only` | Path A: run planning then stop (no code changes) |
+| `--triage auto\|always\|never` | Path A: score issue readiness before Phase 0 builds it (see [issue round-trip chapter](system/chapters/2026-06-25-github-issue-roundtrip/)) |
+| `--worktree` | Path A: isolate the issue run in its own git worktree (same chapter) |
+| `--issues LIST\|ready` | Work a queue of issues serially, one worktree + PR each; pair with `scripts/ralph-watch.sh` to watch/pause/abort jobs (same chapter) |
 
 See `./scripts/ralph-loop.sh --help` for the full list.
 

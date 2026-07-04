@@ -18,16 +18,18 @@ A **readiness pre-phase** that runs *before* Phase 0:
 3. **Label the stage.** Apply `ralph:ready` / `ralph:needs-triage` / `ralph:blocked` (the stage vocabulary the rest of the system shares).
 4. **Promote only `ready`.** Only `ralph:ready` issues flow into Phase 0. This is also the gate that makes it safe to widen the loop's scan beyond a curated allowlist (it can finally retire the `roadmap` exclusion for promoted issues — see `prd.md` §6).
 
-**Files touched:** `scripts/ralph-loop.sh` (a pre-Phase-0 gate); a new `triage` role prompt overlay if scoring warrants its own persona.
+**Files touched:** `scripts/ralph-loop.sh` (a pre-Phase-0 gate); a new `triage` role prompt overlay if scoring warrants its own persona (not needed — deterministic scorer shipped; an LLM layer could sit on top later).
 
 ## Acceptance criteria
 
-- [ ] Each scored issue receives exactly one stage label; the classification is deterministic given the issue content.
-- [ ] `needs-info` issues get a clarifying-questions comment and are **not** built (no PR, no branch).
-- [ ] Only `ralph:ready` issues are promoted into Phase 0.
-- [ ] **Triage precision** is measurable: of issues labeled `ready`, the % that subsequently build to a merge-able PR is tracked (kill criterion if `ready` is anti-signal — see `prd.md` §7).
-- [ ] Honors `--write` default-off (no labels/comments written when the flag is off; classification still logged).
-- [ ] `prd.md` §3 Idea 4 matches shipped behavior (anti-drift DoD).
+**Shipped (2026-07-04):** implemented as a deterministic pure-bash classifier (`triage_classify`) — NOT an LLM persona (the determinism AC rules that out); `--triage auto|always|never`; stage labels `ralph:ready`/`ralph:needs-triage`/`ralph:blocked` joined the single mutually-exclusive `ralph:` label namespace; roadmap-labeled issues are parked with ZERO writes; the gate applies even with `--write` off (labels/comments dry).
+
+- [x] Each scored issue receives exactly one stage label; the classification is deterministic given the issue content.
+- [x] `needs-info` issues get a clarifying-questions comment and are **not** built (no PR, no branch).
+- [x] Only `ralph:ready` issues are promoted into Phase 0.
+- [x] **Triage precision** is measurable: of issues labeled `ready`, the % that subsequently build to a merge-able PR is tracked (kill criterion if `ready` is anti-signal — see `prd.md` §7). — raw data via the local gitignored ledger `.ralph/triage-ledger.tsv` (epoch/issue/classification); precision computed offline against PR outcomes.
+- [x] Honors `--write` default-off (no labels/comments written when the flag is off; classification still logged).
+- [x] `prd.md` §3 Idea 4 matches shipped behavior (anti-drift DoD).
 
 ## Dependencies & sequencing
 

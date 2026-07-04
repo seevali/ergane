@@ -21,12 +21,14 @@ Burn-down at scale ("40 stale issues and a weekend") is impossible one-`--issue`
 
 ## Acceptance criteria
 
-- [ ] `--issues <list>` (or `--issues ready`) works the issues serially, each isolated in its own worktree, each opening its own PR.
-- [ ] `ralph watch` shows live per-job rows (issue, phase, story X/Y, elapsed, cost, health) and visibly flags an unhealthy/stuck job.
-- [ ] Per-job **pause / resume / abort** works and is shipped in the same change as the multi-issue driver (no throttle without a brake).
-- [ ] **Reviewer-despair kill check:** if serial runs produce more PRs than the operator reviews, do **not** proceed to v2 concurrency (`prd.md` §7).
-- [ ] No auto-merge / auto-close (ADR I3); concurrency explicitly deferred and documented as v2.
-- [ ] `prd.md` §3 Idea 5 matches shipped behavior (anti-drift DoD).
+**Shipped (2026-07-04):** strictly serial driver (`--issues LIST|ready`) re-invoking the loop per issue with `--worktree` and forwarded flags; per-job status files under gitignored `.ralph/jobs/`; `scripts/ralph-watch.sh` = dashboard (issue/state/story X/Y/elapsed/cost/health glyph, stuck-job flag) + brake CLI; brake = control files honored between steps inside `check_interrupted` (pause/resume/abort; abort exit code 4; inert unless the driver exports `RALPH_JOBS_DIR`, so standalone runs are unchanged); `ready` mode = open issues labeled `ralph:ready` (Triage's promotion gate keeps the roadmap recursion guard) and fails closed on `gh` errors; driver summary prints the reviewer-despair guard; concurrency explicitly deferred to v2.
+
+- [x] `--issues <list>` (or `--issues ready`) works the issues serially, each isolated in its own worktree, each opening its own PR.
+- [x] `ralph watch` shows live per-job rows (issue, phase, story X/Y, elapsed, cost, health) and visibly flags an unhealthy/stuck job.
+- [x] Per-job **pause / resume / abort** works and is shipped in the same change as the multi-issue driver (no throttle without a brake).
+- [x] **Reviewer-despair kill check:** if serial runs produce more PRs than the operator reviews, do **not** proceed to v2 concurrency (`prd.md` §7). — enforced as a documented guard line in every driver summary; the human decides.
+- [x] No auto-merge / auto-close (ADR I3); concurrency explicitly deferred and documented as v2. — driver and watch never invoke merge/close; smoke asserts it.
+- [x] `prd.md` §3 Idea 5 matches shipped behavior (anti-drift DoD).
 
 ## Dependencies & sequencing
 

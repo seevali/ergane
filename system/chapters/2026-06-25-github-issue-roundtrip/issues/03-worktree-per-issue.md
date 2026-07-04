@@ -22,12 +22,14 @@ The filesystem-native take on sandcastle's "branch" strategy — using the tool 
 
 ## Acceptance criteria
 
-- [ ] An issue run executes entirely inside `../ralph-issue-N`; the main working tree's `git status` stays clean throughout.
-- [ ] Completion checks (`is_story_complete` / `git log` greps) remain correct when run from the worktree.
-- [ ] **Reaper:** a crashed/interrupted run leaves no orphaned worktree or dangling branch after the next run's prune (verified by a smoke that simulates an abort).
-- [ ] Planning artifacts remain readable from the main tree (the artifact seam is implemented, not hand-waved).
-- [ ] Behavior with worktrees disabled is unchanged (feature flag or default-path parity).
-- [ ] `prd.md` §3 Idea 3 matches shipped behavior (anti-drift DoD).
+**Shipped (2026-07-04):** DELIBERATE DEVIATION — worktrees live IN-REPO at `.ralph/worktrees/issue-N` (gitignored), not the sibling `../ralph-issue-N` this issue proposed. The root `CLAUDE.md` self-contained-repo guardrail forbids `../` references, and the in-repo location makes the artifact seam structural. `ensure_issue_pr` also gained OPEN-only branch-based PR recovery so success teardown discarding the untracked `pr.txt` can never resurrect a merged PR or double-create.
+
+- [x] An issue run executes entirely inside `../ralph-issue-N`; the main working tree's `git status` stays clean throughout. — shipped location: `.ralph/worktrees/issue-N` (see deviation)
+- [x] Completion checks (`is_story_complete` / `git log` greps) remain correct when run from the worktree.
+- [x] **Reaper:** a crashed/interrupted run leaves no orphaned worktree or dangling branch after the next run's prune (verified by a smoke that simulates an abort). — crashed trees are RESUMED by the next run of the same issue (resumable state, not garbage); prune reclaims manually-deleted trees; success teardown (all-green only) force-removes the tree and always keeps the branch.
+- [x] Planning artifacts remain readable from the main tree (the artifact seam is implemented, not hand-waved). — structural: main-tree path `.ralph/worktrees/issue-N/docs/…` + breadcrumb `.info` file.
+- [x] Behavior with worktrees disabled is unchanged (feature flag or default-path parity). — `--worktree` default off; absent = byte-identical behavior.
+- [x] `prd.md` §3 Idea 3 matches shipped behavior (anti-drift DoD).
 
 ## Dependencies & sequencing
 

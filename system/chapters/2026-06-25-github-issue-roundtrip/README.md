@@ -1,6 +1,6 @@
 # Chapter: GitHub Issue Round-Trip & Autonomy
 
-**Status:** Planning — drafted 2026-06-25 (System Track). Issues filed; no stories built yet.
+**Status:** **Built — all five ideas shipped.** Drafted 2026-06-25; Idea 1 hand-built 2026-06-26; Ideas 2–5 built 2026-07-04 by supervised multi-agent orchestration (method + decision log: [BUILD-JOURNAL.md](BUILD-JOURNAL.md)). **Open:** the live `--write`-on dogfood run (the chapter's validation gate — offline smokes prove everything except real `gh` write scopes) and the merge-as-is-rate measurement it starts (prd.md §7).
 **Work surface:** `scripts/ralph-loop.sh` + `scripts/prompts/**` + `gh` write paths + docs.
 **Part of:** [`../../design/issue-native-bmad-loop.md`](../../design/issue-native-bmad-loop.md) — the parent architecture (how GitHub Issues + BMAD + the Ralph Loop unify). This chapter's five issues are *partial implementations* of that design (see its §11 traceability).
 **Builds on:** [`../2026-06-24-github-issue-intake/`](../2026-06-24-github-issue-intake/) — the completed *read-only* Path A intake. This chapter takes intake from **read-only** to **write-back**.
@@ -24,7 +24,8 @@ Today the loop, after building from an issue, **abandons the human at the finish
 
 ## Reading order
 
-1. [`prd.md`](prd.md) — the evolution PRD (the **source of truth**). Start at its §1 Context.
+0. [`BUILD-JOURNAL.md`](BUILD-JOURNAL.md) — how Ideas 2–5 were actually built (2026-07-04): the orchestration method, per-idea design decisions with their whys, and what adversarial verification caught. Read this for the *history*; the PRD for the *intent*.
+1. [`prd.md`](prd.md) — the evolution PRD (the **source of truth**). Start at its §1 Context. Each §3 idea now carries a dated **Shipped** note where behavior differs from the original sketch.
 2. [`adr-001-github-as-shared-mutable-state.md`](adr-001-github-as-shared-mutable-state.md) — the one irreversible decision (write-back makes GitHub shared mutable state) and its invariants. **Read before implementing any write path.**
 3. [`issues/`](issues/) — the GitHub-issue body files (one epic + five children) and the idempotent `create-github-issues.sh` that files them.
 4. `scripts/ralph-loop.sh` (repo root) — the current read-only `--issue` implementation this chapter extends.
@@ -33,17 +34,19 @@ Today the loop, after building from an issue, **abandons the human at the finish
 
 Idea numbers are stable identities (they match the `ralph:<feature>` labels). **Build order is the dependency arrow, not the idea numbers.**
 
-| # | Idea | Label | What it adds |
-|---|------|-------|--------------|
-| 1 | **The Round Trip** | `ralph:round-trip` | branch-per-issue → draft PR → self-updating issue comment → verdict-gated labels, behind `--write` (default off). The spine. |
-| 2 | **The Confessing PR** | `ralph:confessing-pr` | PR body synthesized from per-story artifacts, with an "I had to guess" uncertainty section up top. The trust interface. |
-| 3 | **Worktree-per-Issue** | `ralph:worktree` | `git worktree` isolation for clean, concurrent-capable runs. Plumbing. |
-| 4 | **Triage Before Toil** | `ralph:triage` | a readiness pre-phase: read the issue, ask clarifying Qs as a comment, label, only promote `ready`. The judgment gate. |
-| 5 | **Swarm + Mission Control** | `ralph:swarm` | serial multi-issue (v1) + `ralph watch` dashboard + per-job pause/abort brake. Concurrency deferred to v2. |
+| # | Idea | Label | What it adds | Shipped |
+|---|------|-------|--------------|---------|
+| 1 | **The Round Trip** | `ralph:round-trip` | branch-per-issue → draft PR → self-updating issue comment → verdict-gated labels, behind `--write` (default off). The spine. | ✅ 2026-06-26 (`b7253d4` et al., hand-built) |
+| 2 | **The Confessing PR** | `ralph:confessing-pr` | PR body synthesized from per-story artifacts, with an "I had to guess" uncertainty section up top. The trust interface. | ✅ 2026-07-04 (`4316c2a`) |
+| 3 | **Worktree-per-Issue** | `ralph:worktree` | `git worktree` isolation for clean, concurrent-capable runs. Plumbing. Shipped in-repo at `.ralph/worktrees/` (deviation — see prd.md §3). | ✅ 2026-07-04 (`6ae7cf6`) |
+| 4 | **Triage Before Toil** | `ralph:triage` | a readiness pre-phase: read the issue, ask clarifying Qs as a comment, label, only promote `ready`. The judgment gate. | ✅ 2026-07-04 (`9f070ae`) |
+| 5 | **Swarm + Mission Control** | `ralph:swarm` | serial multi-issue (v1) + `ralph watch` dashboard + per-job pause/abort brake. Concurrency deferred to v2. | ✅ 2026-07-04 (`07c1316`) |
 
 **Build order (decided 2026-06-25 — trust before scale):**
 `1 Round Trip → 4 Triage → (2 Confessing PR, 3 Worktree) → 5 Swarm`.
 Build Idea 1 **by hand**; then Ideas 2–5 may be dogfooded through Path A while measuring the merge-as-is rate (see `prd.md` §6–§7).
+
+**How it actually went (2026-07-04):** the order held (1 → 4 → 2 → 3 → 5). Ideas 2–5 were built neither by hand nor by the loop, but by a third method — supervised multi-agent orchestration (per-idea slice specs, an implementer, two adversarial reviewers, a fixer — see [BUILD-JOURNAL.md](BUILD-JOURNAL.md)), because the loop cannot safely edit the script it is executing (ADR-002) and hand-building all four would have thrown away the verification fan-out that ended up catching a run-breaking blocker and a merged-PR-resurrection bug. Dogfooding through Path A remains the *validation* plan: the live `--write` run is still the open gate.
 
 ## Key design decisions (the *why*)
 
