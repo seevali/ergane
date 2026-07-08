@@ -131,6 +131,27 @@ test('printOutro: shows "current directory" label when targetDir is "."', () => 
   assert.ok(output.includes('current directory'), 'should use "current directory" for "." targetDir');
 });
 
+// ─── Test: run command always carries the required --checkpoint flag ─────────
+
+test('printOutro: run command includes --checkpoint (required by the loop)', () => {
+  const logs = [];
+  const plan = makePlan({ checkpointCommand: 'npm run build && npm test' });
+  printOutro(makeResult(), plan, (msg = '') => logs.push(msg));
+
+  const output = logs.join('\n');
+  assert.ok(output.includes("--checkpoint 'npm run build && npm test'"), 'should include the chosen checkpoint');
+});
+
+test('printOutro: run command includes --checkpoint even when plan omits it', () => {
+  const logs = [];
+  const plan = makePlan();
+  delete plan.checkpointCommand;
+  printOutro(makeResult(), plan, (msg = '') => logs.push(msg));
+
+  const output = logs.join('\n');
+  assert.ok(output.includes('--checkpoint '), 'should always emit --checkpoint so the printed command is runnable');
+});
+
 // ─── Test: Existing-project warning ──────────────────────────────────────────
 
 test('printOutro: shows existing-project warning when classification is existing-project', () => {

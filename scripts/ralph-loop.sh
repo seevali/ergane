@@ -2,25 +2,22 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════
-# Ralph Loop — Exchange Rates Dashboard demo (Cost-Optimized)
+# Ralph Loop — autonomous BMAD build loop (Cost-Optimized)
 #
 # Orchestrates SM -> Dev -> Review -> Fix cycles per story.
 # Each agent invocation is a fresh Claude Code session (the core
 # Ralph insight: clean context per step).
 #
-# Adapted from ralph-affiant-v2.sh for this self-contained React + Vite
-# + TypeScript demo repo. The loop semantics, multi-model routing, retry
-# logic, and budget caps are unchanged from the Affiant version; only the
-# stack-specific bits were swapped:
-#   - Defaults target this repo: --project-dir src, --prd docs/prd.md,
-#     --epic docs/epics/exchange-rates-dashboard.md, and an npm checkpoint.
-#     A PRD is passed via --prd; there is no separate architecture doc
-#     (--arch stays optional and unset).
-#   - Cached system prompts encode React 19 / Vite / TypeScript-strict
-#     conventions (function components + hooks, native fetch, localStorage,
-#     no class components, lean dependency stack) instead of .NET/C#.
-#   - Review standards are React/TS-specific (hooks rules, strict types,
-#     Vitest + RTL, stack-rule adherence) instead of .NET layering.
+# The loop is workload-neutral — it bakes in no project-specific defaults:
+#   - Path B (execute): --project-dir and --epic are REQUIRED; they name the
+#     app directory the agents work inside and the epic to build from.
+#   - Path A (intake, --issue/--issues): the epic is DERIVED from the issue.
+#   - Per-project conventions are read at runtime from the target repo's
+#     docs/project-conventions.md (falling back to the shipped stack-agnostic
+#     scripts/prompts/common/project-conventions.md), and the review checkpoint
+#     is whatever --checkpoint specifies. No stack rules are hardcoded here.
+# The loop semantics, multi-model routing, retry logic, and budget caps are
+# unchanged from the ralph-affiant-v2.sh lineage this was adapted from.
 #   - BMAD agent personas load from .claude/skills (BMAD v6.7+): the SM
 #     step is bmad-create-story, Dev is bmad-dev-story, Review is
 #     bmad-code-review (there is no bmad-agent-sm in v6.7+).
@@ -54,13 +51,16 @@ MAX_ITERATIONS=50
 MAX_REVIEW_RETRIES=3
 MAX_UPSTREAM_DEPTH=1
 TAG=""
-# Defaults target this demo repo so the documented command — and a bare
-# `./scripts/ralph-loop.sh` — work out of the box. Flags still override.
-EPIC_FILE="docs/epics/exchange-rates-dashboard.md"
+# Workload-neutral: no project-specific defaults. --project-dir is always
+# required; --epic is required for Path B (an --issue/--issues run derives its
+# own epic); --checkpoint is always required (it names the project's health
+# command — the loop bakes in no stack, so there is no sane default to guess).
+# --prd is optional.
+EPIC_FILE=""
 STORIES_ARG="all"
-CHECKPOINT_CMD="cd src && npm run build && npm test --if-present"
-PROJECT_DIR_ARG="src"
-PRD_FILE="docs/prd.md"
+CHECKPOINT_CMD=""
+PROJECT_DIR_ARG=""
+PRD_FILE=""
 ARCH_FILE=""
 DRY_RUN_PROMPTS=false
 
@@ -119,32 +119,34 @@ MAX_TURNS_PLANNER=30
 usage() {
   cat <<'EOF'
 Usage:
-  Path B (execute):  ralph-loop.sh [--project-dir DIR] [--epic FILE] [--stories LIST] [--checkpoint CMD] [options]
-  Path A (intake):   ralph-loop.sh --issue N [--repo OWNER/NAME] [--checkpoint CMD] [--plan-only] [options]
+  Path B (execute):  ralph-loop.sh --project-dir DIR --epic FILE --checkpoint CMD [--stories LIST] [options]
+  Path A (intake):   ralph-loop.sh --issue N --project-dir DIR --checkpoint CMD [--repo OWNER/NAME] [--plan-only] [options]
 
 The loop has two execution paths:
-  • Path B "execute" (default): build from an existing epic. The four core flags
-    below have demo defaults baked in, so a bare `./scripts/ralph-loop.sh` runs the
-    full Exchange Rates Dashboard build. Pass a flag only to override its default.
+  • Path B "execute" (default): build from an existing epic. --project-dir,
+    --epic, and --checkpoint are REQUIRED — the loop is workload-neutral and
+    bakes in no defaults.
   • Path A "intake" (selected by --issue): turn a single GitHub issue into a PRD /
     optional architecture / epic (Phase 0), then run the Path B loop on it. In
     Path A, --epic/--stories are DERIVED from the issue and must not be passed
-    (--issue and --epic are mutually exclusive).
+    (--issue and --epic are mutually exclusive); --project-dir is still required.
 
-Core flags (defaults shown):
-  --project-dir DIR        Relative path to the app the agents work inside
-                           (default: src)
-  --epic FILE              Path to the epics markdown file
-                           (default: docs/epics/exchange-rates-dashboard.md)
+Core flags:
+  --project-dir DIR        Relative (or absolute) path to the app the agents work
+                           inside. REQUIRED.
+  --epic FILE              Path to the epics markdown file. REQUIRED for Path B;
+                           derived from the issue in Path A.
   --stories LIST           "all" (every story in the epic, in file order) or a
                            comma-separated subset in execution order, e.g. 1.1,1.2,1.3
                            (default: all)
   --checkpoint CMD         Shell command to verify project health, run from repo root
-                           (default: 'cd src && npm run build && npm test --if-present')
+                           (e.g. 'npm test' or 'cd app && npm run build && npm test').
+                           REQUIRED — the loop is workload-neutral and bakes in no
+                           default; this command is what every review step gates on.
 
 Optional document references (passed to SM agent for context):
-  --prd FILE               Path to the PRD markdown (default: docs/prd.md)
-  --arch FILE              Path to an architecture doc (default: unset — this demo has none)
+  --prd FILE               Path to the PRD markdown (optional; unset by default)
+  --arch FILE              Path to an architecture doc (optional; unset by default)
 
 Path A (intake) flags:
   --issue N                GitHub issue number to plan from. Selects Path A. Phase 0
@@ -215,23 +217,22 @@ Utility flags:
                         without it every GitHub mutation is a no-op logged as "[dry] gh …",
                         so behavior stays byte-identical to read-only Path A (ADR-001 I1).
 
-Example (run the whole Exchange Rates Dashboard build — these are the defaults):
+Example (build every story in an epic):
   ./scripts/ralph-loop.sh \
-     --project-dir src \
-     --prd docs/prd.md \
-     --epic docs/epics/exchange-rates-dashboard.md \
-     --stories all \
-     --checkpoint 'cd src && npm run build && npm test --if-present'
+     --epic docs/epics/my-feature.md \
+     --project-dir app \
+     --checkpoint 'npm test'
 
-Example (just the first two stories):
-  ./scripts/ralph-loop.sh --stories 1.1,1.2
+Example (just the first two stories, with a PRD for context):
+  ./scripts/ralph-loop.sh --epic docs/epics/my-feature.md --project-dir app \
+     --prd docs/prd.md --stories 1.1,1.2 --checkpoint 'npm test'
 
 Example (Path A — plan and build from GitHub issue 42):
-  ./scripts/ralph-loop.sh --issue 42 --repo owner/name \
-     --checkpoint 'cd src && npm run build && npm test --if-present'
+  ./scripts/ralph-loop.sh --issue 42 --repo owner/name --project-dir app \
+     --checkpoint 'npm test'
 
 Example (Path A — plan only, for human review before any dev):
-  ./scripts/ralph-loop.sh --issue 42 --plan-only
+  ./scripts/ralph-loop.sh --issue 42 --project-dir app --checkpoint 'npm test' --plan-only
 EOF
   exit 1
 }
@@ -280,7 +281,8 @@ done
 # children, so it is mutually exclusive with --issue (one child's own job) and --epic
 # (Path B). The queue itself (list vs `ready`) is resolved inside run_swarm_driver, after
 # dependency checks. With --issues set and --issue empty, the run falls through the Path B
-# validation below (defaults hold) and is intercepted by the driver gate before main().
+# validation below (which skips the --epic requirement when --issues is set) and is
+# intercepted by the driver gate before main().
 if [[ -n "$ISSUES_ARG" ]]; then
   [[ -n "$ISSUE_NUMBER" ]] && { echo -e "${RED}Error: --issues and --issue are mutually exclusive (--issues drives many single-issue children; --issue is one child)${NC}"; usage; }
   $EPIC_EXPLICIT && { echo -e "${RED}Error: --issues and --epic are mutually exclusive (--issues implies Path A children)${NC}"; usage; }
@@ -296,15 +298,19 @@ if [[ -n "$ISSUE_NUMBER" ]]; then
   case "$ARCHITECTURE_MODE" in auto|always|never) ;; *) echo -e "${RED}Error: --architecture must be auto|always|never (got '$ARCHITECTURE_MODE')${NC}"; usage ;; esac
   case "$TRIAGE_MODE" in auto|always|never) ;; *) echo -e "${RED}Error: --triage must be auto|always|never (got '$TRIAGE_MODE')${NC}"; usage ;; esac
 else
-  # Path B: the existing required-args contract (defaults are baked in, so these
-  # only fire if a user explicitly blanks one out).
+  # Path B (execute) or the swarm driver (--issues). --plan-only/--worktree are
+  # Path A-only.
   $PLAN_ONLY && { echo -e "${RED}Error: --plan-only requires --issue (it stops after the Phase 0 plan, which only Path A runs)${NC}"; usage; }
   [[ "$USE_WORKTREE" == "1" ]] && { echo -e "${RED}Error: --worktree requires --issue (it isolates a Path A issue run in its own git worktree)${NC}"; usage; }
-  [[ -z "$EPIC_FILE" ]]   && { echo -e "${RED}Error: --epic is required${NC}"; usage; }
+  # --epic is required only for a plain Path B run: the swarm driver (--issues) and
+  # Path A children (--issue) each derive their own epic, so don't demand it there.
+  if [[ -z "$ISSUES_ARG" ]]; then
+    [[ -z "$EPIC_FILE" ]] && { echo -e "${RED}Error: --epic is required for Path B (or use --issue/--issues to derive one). See --help.${NC}"; usage; }
+  fi
   [[ -z "$STORIES_ARG" ]] && { echo -e "${RED}Error: --stories is required${NC}"; usage; }
 fi
-[[ -z "$PROJECT_DIR_ARG" ]] && { echo -e "${RED}Error: --project-dir is required${NC}"; usage; }
-[[ -z "$CHECKPOINT_CMD" ]]  && { echo -e "${RED}Error: --checkpoint is required${NC}"; usage; }
+[[ -z "$PROJECT_DIR_ARG" ]] && { echo -e "${RED}Error: --project-dir is required (name the app directory the agents work inside). See --help.${NC}"; usage; }
+[[ -z "$CHECKPOINT_CMD" ]]  && { echo -e "${RED}Error: --checkpoint is required (the shell command every review step gates on, e.g. 'npm test'). The loop bakes in no default. See --help.${NC}"; usage; }
 
 # ──── Dependency checks ────
 command -v claude >/dev/null 2>&1 || {
@@ -326,14 +332,9 @@ fi
 [[ ! -d "$PROJECT_DIR" ]] && { echo -e "${RED}Error: Project directory not found: $PROJECT_DIR${NC}"; exit 1; }
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 
-COMPONENT_NAME="$(basename "$PROJECT_DIR_ARG" | tr '[:upper:]' '[:lower:]')"
-# Friendly label for banners/progress headers. `src` is this demo's app dir,
-# so show the product name rather than the bare folder name.
-if [[ "$COMPONENT_NAME" == "src" ]]; then
-  COMPONENT_DISPLAY_NAME="Exchange Rates Dashboard"
-else
-  COMPONENT_DISPLAY_NAME="$(basename "$PROJECT_DIR_ARG")"
-fi
+# Friendly label for banners/progress headers. Defaults to the bare app-dir name;
+# refined to the epic's own '## Epic N: Title' below once $EPIC_FILE is resolved.
+COMPONENT_DISPLAY_NAME="$(basename "$PROJECT_DIR_ARG")"
 
 # ──── Path A (intake): derive the artifact paths from the issue number ────
 # Phase 0 (run_intake_phase, below) generates these before Phase 2 consumes them,
@@ -358,6 +359,9 @@ fi
 # its path is already absolute from the derivation above).
 if [[ -f "$EPIC_FILE" ]]; then
   EPIC_FILE="$(cd "$(dirname "$EPIC_FILE")" && pwd)/$(basename "$EPIC_FILE")"
+  # Prefer the epic's own '## Epic N: Title' header as the friendly display name.
+  _epic_display="$(grep -m1 -oE '^## Epic [0-9]+: .+' "$EPIC_FILE" 2>/dev/null | sed -E 's/^## Epic [0-9]+: //')"
+  [[ -n "$_epic_display" ]] && COMPONENT_DISPLAY_NAME="$_epic_display"
 fi
 
 resolve_optional_doc() {
@@ -453,8 +457,8 @@ finalize_story_plan() {
 # Path B (no --issue): the epic exists now, so finalize immediately — same timing
 # as before the two-path split. Path A finalizes after Phase 0 builds the epic. Driver
 # mode (--issues) skips this entirely: it dispatches per-issue Path A children and never
-# touches the demo epic or the story-plan globals (they'd only print a spurious
-# `--stories all -> …` line and, on a fork without the demo epic, abort at finalize).
+# touches an epic or the story-plan globals (finalize would only print a spurious
+# `--stories all -> …` line and, with no --epic passed, abort).
 if [[ -z "$ISSUE_NUMBER" && -z "$ISSUES_ARG" ]]; then
   finalize_story_plan
 fi
@@ -604,6 +608,23 @@ else
   log_warn "Planner agent SKILL.md not found at $AGENT_PLANNER_FILE — using inline fallback"
 fi
 
+# ──── Layer 3a conventions source ────
+# Prefer the project's own docs/project-conventions.md (this repo commits one; the
+# installer renders a per-project one from the wizard's stack answers). Fall back to
+# the shipped stack-agnostic scripts/prompts/common/project-conventions.md when the
+# target project has none. Derived from $REPO_ROOT, so it MUST be re-derived whenever
+# REPO_ROOT changes: ensure_issue_worktree() re-points REPO_ROOT into the worktree for
+# --worktree runs and re-runs this exact resolution (inline there, because that fenced
+# block must stay self-sourceable for its smoke — see the note at that site). Without
+# the re-derive a --worktree run would read the MAIN tree's conventions after the trees
+# diverge. Resolved here at startup so the choice is logged beside the persona loads.
+if [[ -f "$REPO_ROOT/docs/project-conventions.md" ]]; then
+  PROJECT_CONVENTIONS_FILE="$REPO_ROOT/docs/project-conventions.md"
+else
+  PROJECT_CONVENTIONS_FILE="$REPO_ROOT/scripts/prompts/common/project-conventions.md"
+fi
+log_info "Loaded project conventions from $PROJECT_CONVENTIONS_FILE"
+
 # Assembles a three-layer system prompt for the given role (sm, dev, review).
 # Layer 1: execution-context override (stable, repo-local)
 # Layer 2: live BMAD persona or bmad-fallbacks/<role>.md if the persona is empty
@@ -637,9 +658,12 @@ load_prompt_layers() {
     log_info "load_prompt_layers($role): using inline fallback (BMAD persona not found)"
   fi
 
-  # Layer 3: Demo-Specific Rules (stable, repo-local)
-  layer3_common="$(cat "$REPO_ROOT/scripts/prompts/common/project-conventions.md" 2>/dev/null)"
-  [[ -z "$layer3_common" ]] && { echo "ERROR: Layer 3 common file not found: $REPO_ROOT/scripts/prompts/common/project-conventions.md" >&2; return 1; }
+  # Layer 3: project conventions (PROJECT_CONVENTIONS_FILE — the project's own
+  # docs/project-conventions.md, else the shipped stack-agnostic fallback; resolved at
+  # startup and re-resolved by ensure_issue_worktree() when a --worktree run re-points
+  # REPO_ROOT, so this always reflects the current tree)
+  layer3_common="$(cat "$PROJECT_CONVENTIONS_FILE" 2>/dev/null)"
+  [[ -z "$layer3_common" ]] && { echo "ERROR: Layer 3 conventions file not found: $PROJECT_CONVENTIONS_FILE" >&2; return 1; }
 
   layer3_overlay="$(cat "$REPO_ROOT/scripts/prompts/${role}/overlay.md" 2>/dev/null)"
   [[ -z "$layer3_overlay" ]] && { echo "ERROR: Layer 3 overlay file not found: $REPO_ROOT/scripts/prompts/${role}/overlay.md" >&2; return 1; }
@@ -1256,7 +1280,7 @@ run_dev_agent() {
 Implement story ${story_id}.
 
 Read the story specification at ${STORIES_DIR}/${story_id}.md and implement everything described.
-The project conventions (TypeScript strict, ESM, dependency direction, atomic writes, etc.) are already in your system prompt — follow them strictly.
+The project conventions are already in your system prompt — follow them strictly.
 
 After implementation:
 - Run the verification steps from the story spec
@@ -1455,7 +1479,7 @@ Read:
    - Which downstream story triggered this fix (${current_story_id})
    - Files modified
 
-CRITICAL: Only modify files in story ${upstream_story_id}'s scope. If shared type files must change (e.g., TypeScript interfaces used by both stories), make those changes too — but keep them minimal.
+CRITICAL: Only modify files in story ${upstream_story_id}'s scope. If shared definitions must change (e.g., interfaces or types used by both stories), make those changes too — but keep them minimal.
 RALPH_PROMPT
 
   run_claude "$pf" "[${current_story_id}] Upstream Fix Agent (fixing ${upstream_story_id})" "$MODEL_DEV" "$MAX_TURNS_UPSTREAM_FIX" "$SYSTEM_PROMPT_DEV" "$current_story_id"
@@ -3054,6 +3078,18 @@ ensure_issue_worktree() {
   PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
   EPIC_FILE="$REPO_ROOT/docs/epics/issue-${ISSUE_NUMBER}.md"
   PRD_FILE="$REPO_ROOT/docs/prd/issue-${ISSUE_NUMBER}.md"
+  # Re-derive the Layer 3a conventions source from the worktree's REPO_ROOT (it was
+  # resolved from the main tree at startup, before this re-point). Without this a
+  # --worktree run reads the main tree's docs/project-conventions.md even after the
+  # trees diverge. Inlined (not a shared helper call) on purpose: this fenced block is
+  # extracted and sourced in isolation by idea3-worktree-smoke.sh, so it must not
+  # depend on functions defined elsewhere in the script. Mirror the startup resolution.
+  if [[ -f "$REPO_ROOT/docs/project-conventions.md" ]]; then
+    PROJECT_CONVENTIONS_FILE="$REPO_ROOT/docs/project-conventions.md"
+  else
+    PROJECT_CONVENTIONS_FILE="$REPO_ROOT/scripts/prompts/common/project-conventions.md"
+  fi
+  log_info "[worktree] project conventions -> $PROJECT_CONVENTIONS_FILE"
   # Re-point stories + master progress ONLY if they still hold the startup default
   # (a System Track run may have overridden STORIES_DIR via env — respect that).
   if [[ "$STORIES_DIR" == "$RALPH_MAIN_ROOT/docs/stories" ]]; then
@@ -3776,21 +3812,29 @@ SALVAGE_DONE
 
     local git_rc=0
     # Narrow git add: stage only this story's artifacts plus configured
-    # work-surface paths. The default list is correct for the Demo Track
-    # (work happens in src/, story specs land in docs/stories/). System
-    # Track runs need a wider scope (scripts/, system/, root docs) because
-    # the loop itself is the work surface — those paths are added via the
+    # work-surface paths. The paths are derived from the run's own
+    # --project-dir ($PROJECT_DIR) and story-specs dir ($STORIES_DIR) — never
+    # a hardcoded app dir — so a fork with an unrelated `src/` is never
+    # silently over-staged. System Track runs (whose --project-dir is the repo
+    # root) additionally enumerate scripts/, system/, root docs via the
     # EXTRA_STAGE_PATHS env var, which the System Track wrapper exports.
     #
-    # Never `git add -A` (which would sweep unrelated tracked changes —
-    # logs, other stories' progress, anything you happened to be editing
-    # — into the feat(X.Y): commit).
+    # Never `git add -A` — that would sweep unrelated tracked changes (logs,
+    # other stories' progress, anything you happened to be editing) into the
+    # feat(X.Y): commit. CRITICAL SUBTLETY: `git add "$PROJECT_DIR"` when
+    # $PROJECT_DIR *is* the repo root is exactly `git add -A` from the repo root
+    # (git 2.0+). System Track passes `--project-dir .`, which resolves
+    # $PROJECT_DIR to $REPO_ROOT — so the array below adds $PROJECT_DIR/$STORIES_DIR
+    # ONLY when --project-dir is a real subdirectory. In the repo-root case staging
+    # is scoped entirely by the curated EXTRA_STAGE_PATHS list (the System Track
+    # wrapper exports "scripts/ system/ README.md CLAUDE.md TIMELINE.md"; its
+    # `system/` entry covers $STORIES_DIR), plus the three explicit per-story files.
     #
     # `cd "$REPO_ROOT"` is critical: the script's cwd is "$PROJECT_DIR"
-    # (= src/) from the `cd "$PROJECT_DIR"` near the top of the run. The
-    # pathspecs below are repo-root-relative, so they must resolve from
-    # the repo root. node_modules/ and dist/ under src/ are gitignored,
-    # so `git add src/` won't stage build output.
+    # from the `cd "$PROJECT_DIR"` near the top of the run. $PROJECT_DIR and
+    # $STORIES_DIR are absolute (inside the repo), so they resolve correctly
+    # from the repo root. node_modules/ and dist/ are gitignored, so staging
+    # a subdirectory project dir won't add build output.
     #
     # `|| true` on git add is also critical: the script runs under
     # `set -euo pipefail`. A non-zero git-add return (e.g. a pathspec
@@ -3802,9 +3846,14 @@ SALVAGE_DONE
       "${STORIES_DIR}/${story_id}.md"
       "${STORIES_DIR}/${story_id}-done.md"
       "${STORIES_DIR}/${story_id}-review.md"
-      src/
-      docs/stories/
     )
+    # Add the run's work-surface dirs ONLY when --project-dir is a real subdir.
+    # If $PROJECT_DIR == $REPO_ROOT (System Track's `--project-dir .`), staging it
+    # equals `git add -A` and would sweep unrelated dirty files into this commit;
+    # in that mode EXTRA_STAGE_PATHS (below) does the narrow staging instead.
+    if [[ "$PROJECT_DIR" != "$REPO_ROOT" ]]; then
+      stage_paths+=( "$PROJECT_DIR" "$STORIES_DIR" )
+    fi
     if [[ -n "${EXTRA_STAGE_PATHS:-}" ]]; then
       # Intentional word splitting on EXTRA_STAGE_PATHS so callers can pass
       # space-separated paths via env var: EXTRA_STAGE_PATHS="scripts/ system/ README.md"

@@ -12,11 +12,12 @@ Each agent's cached system prompt is built from three layers concatenated with `
 [Layer 1: Execution Context]    scripts/prompts/common/execution-context.md
 [Layer 2: BMAD Persona]         loaded live from .claude/skills/<role>/SKILL.md
                                   (falls back to scripts/prompts/bmad-fallbacks/<role>.md)
-[Layer 3: Demo-Specific Rules]  scripts/prompts/common/project-conventions.md
+[Layer 3: Project Conventions]  the project's docs/project-conventions.md if present,
+                                  else scripts/prompts/common/project-conventions.md
                                   + scripts/prompts/<role>/overlay.md
 ```
 
-**Why this order matters.** Layer 1 must come first: it contains "do not HALT, skip On Activation" override rules that win against BMAD persona's interactive instructions. Layer 3 comes last so demo-specific stack rules (React/Vite/TS conventions, review pass/block criteria) are the freshest instruction the model receives.
+**Why this order matters.** Layer 1 must come first: it contains "do not HALT, skip On Activation" override rules that win against BMAD persona's interactive instructions. Layer 3 comes last so the project's own conventions (stack rules, review pass/block criteria) are the freshest instruction the model receives.
 
 **When BMAD updates.** Only Layer 2 changes when a new BMAD version ships. Layers 1 and 3 stay byte-identical, so prompt cache hits survive across the unchanged bytes within a run.
 
@@ -29,7 +30,8 @@ scripts/prompts/
 ├── README.md                        ← this file
 ├── common/
 │   ├── execution-context.md         Layer 1 (shared by all roles): non-interactive override
-│   └── project-conventions.md       Layer 3 shared: React/Vite/TS stack rules + scope discipline
+│   └── project-conventions.md       Layer 3 fallback: stack-agnostic conventions + scope discipline
+│                                      (used only when the project has no docs/project-conventions.md)
 ├── sm/
 │   └── overlay.md                   Layer 3 SM-specific additions (placeholder initially)
 ├── dev/
@@ -46,7 +48,7 @@ scripts/prompts/
 
 ## The `{{CHECKPOINT_CMD}}` Placeholder
 
-`project-conventions.md` contains the literal string `{{CHECKPOINT_CMD}}` (double braces). This is the **only** templated value allowed in Layer 3. The loader (`load_prompt_layers()` in `scripts/ralph-loop.sh`, added in story 1.2) substitutes it with the actual `$CHECKPOINT_CMD` value at load time.
+The resolved Layer 3 conventions file (the project's `docs/project-conventions.md`, or the shipped fallback) may contain the literal string `{{CHECKPOINT_CMD}}` (double braces). This is the **only** templated value allowed in Layer 3. The loader (`load_prompt_layers()` in `scripts/ralph-loop.sh`) substitutes it with the actual `$CHECKPOINT_CMD` value at load time.
 
 **Why double braces?** To distinguish placeholder syntax from bash variable syntax (`${...}`). The substitution is a single deterministic pass over a whitelisted set (`CHECKPOINT_CMD` only).
 
@@ -61,7 +63,7 @@ The `load_prompt_layers(role)` function (story 1.2) does roughly:
 ```
 layer1 = read scripts/prompts/common/execution-context.md
 layer2 = $AGENT_<ROLE>_PERSONA   # already loaded from .claude/skills/
-layer3 = read scripts/prompts/common/project-conventions.md
+layer3 = read $PROJECT_CONVENTIONS_FILE   # docs/project-conventions.md if present, else the fallback
        + read scripts/prompts/<role>/overlay.md
 if layer2 is empty:
     layer2 = read scripts/prompts/bmad-fallbacks/<role>.md
@@ -76,10 +78,10 @@ The assembled string is assigned to `SYSTEM_PROMPT_SM`, `SYSTEM_PROMPT_DEV`, or 
 
 ## Where to Make Changes for a Different Stack
 
-If you fork this demo for a different tech stack:
+To describe a different tech stack to the loop:
 
-- **React/Vite/TS rules** — edit `scripts/prompts/common/project-conventions.md`. The "## Project Conventions" section is the only place these rules live. Keep the `{{CHECKPOINT_CMD}}` placeholder and update your checkpoint command in the shell that runs the loop.
-- **Review pass/block criteria** — edit `scripts/prompts/review/overlay.md`. The current criteria are specific to the TypeScript/Vite build toolchain. Replace them with criteria appropriate to your stack.
+- **Project conventions** — put them in your project's `docs/project-conventions.md` (the installer renders one from your wizard answers; this repo commits its own). The loop reads that file as Layer 3a whenever it exists. Only edit `scripts/prompts/common/project-conventions.md` — the shipped, stack-agnostic fallback — if you want to change the default behavior for projects that ship no conventions of their own. Keep the `{{CHECKPOINT_CMD}}` placeholder.
+- **Review pass/block criteria** — edit `scripts/prompts/review/overlay.md`. The criteria are stack-generic (checkpoint failure, unmet acceptance criteria, security, escaping the project dir, conventions violations); adjust them only if your review policy differs.
 - **Non-interactive override rules** — edit `scripts/prompts/common/execution-context.md` only if your BMAD version uses different activation patterns or introduces new interactive commands. Changing this risks the loop hanging.
 - **Fallback personas** — edit `scripts/prompts/bmad-fallbacks/<role>.md` if you want different generic persona stubs when BMAD isn't installed.
 

@@ -29,8 +29,11 @@ Both ship full of `<!-- TODO -->` placeholders. **The loop builds exactly what t
 bash scripts/ralph-loop.sh \
   --project-dir {{APP_DIR}} \
   --prd docs/epics/project-prd.md \
-  --epic docs/epics/project-stories.md
+  --epic docs/epics/project-stories.md \
+  --checkpoint "{{CHECKPOINT_COMMAND}}"
 ```
+
+`--checkpoint` is **required** — it is the shell command the loop runs after every story to prove the project still builds and passes tests, and every review step gates on it. The value above is the checkpoint you chose during install; change it any time. The loop bakes in no default, so a command without `--checkpoint` stops immediately with `Error: --checkpoint is required`.
 
 Your app source lives in `{{APP_DIR}}/` (the installer created it empty with a `.gitkeep`). The loop, for each story, will:
 
@@ -74,6 +77,7 @@ bash scripts/ralph-loop.sh \
   --project-dir {{APP_DIR}} \
   --prd docs/epics/project-prd.md \
   --epic docs/epics/project-stories.md \
+  --checkpoint "{{CHECKPOINT_COMMAND}}" \
   --stories 1.1 \
   --budget-per-story-usd 2
 ```
@@ -86,10 +90,12 @@ Instead of hand-authoring an epic, you can point the loop at a GitHub issue and 
 
 Every command below is **read-only against GitHub by default** (it never pushes, comments, or labels) until you add `--write`.
 
+Every invocation still needs `--project-dir {{APP_DIR}}` (the app directory the agents write code inside) and `--checkpoint "{{CHECKPOINT_COMMAND}}"` (the health command every review step gates on). The loop has no baked-in default for either, so a command missing one stops immediately with `Error: --project-dir is required` / `Error: --checkpoint is required`.
+
 ### Preview a plan (free-ish, safe)
 
 ```bash
-bash scripts/ralph-loop.sh --issue 42 --plan-only
+bash scripts/ralph-loop.sh --issue 42 --plan-only --project-dir {{APP_DIR}} --checkpoint "{{CHECKPOINT_COMMAND}}"
 ```
 
 `--issue N` selects an issue to plan from. `--plan-only` runs only the planning phase (writes a local PRD/epic under `docs/`) and then stops — **no code is written**. This still spends a small amount of tokens on the planning agents, but touches nothing on GitHub.
@@ -97,7 +103,7 @@ bash scripts/ralph-loop.sh --issue 42 --plan-only
 ### Build from an issue (still read-only against GitHub)
 
 ```bash
-bash scripts/ralph-loop.sh --issue 42
+bash scripts/ralph-loop.sh --issue 42 --project-dir {{APP_DIR}} --checkpoint "{{CHECKPOINT_COMMAND}}"
 ```
 
 Plans the issue, then runs the full Path B loop on the derived epic. It writes code locally and spends tokens per story, but makes **no** changes to the GitHub issue or repo — no branch push, no PR, no comment.
@@ -105,7 +111,7 @@ Plans the issue, then runs the full Path B loop on the derived epic. It writes c
 ### Write back to GitHub (`--write` — default OFF)
 
 ```bash
-bash scripts/ralph-loop.sh --issue 42 --write
+bash scripts/ralph-loop.sh --issue 42 --write --project-dir {{APP_DIR}} --checkpoint "{{CHECKPOINT_COMMAND}}"
 ```
 
 Adds `--write` turns on GitHub mutations. It will: push a branch, open a **draft** PR, keep **one** status comment updated on the issue, and set progress labels. It is OFF by default so a first run can never surprise you by writing to your repo. **It still never merges or closes the PR — that stays your decision.**
@@ -113,7 +119,7 @@ Adds `--write` turns on GitHub mutations. It will: push a branch, open a **draft
 ### Triage gate (`--triage`)
 
 ```bash
-bash scripts/ralph-loop.sh --issue 42 --triage auto
+bash scripts/ralph-loop.sh --issue 42 --triage auto --project-dir {{APP_DIR}} --checkpoint "{{CHECKPOINT_COMMAND}}"
 ```
 
 `--triage` is a readiness pre-check that runs before planning. It scores the issue and labels it `ralph:ready`, `ralph:needs-triage`, or `ralph:blocked`, posting clarifying questions when the issue is underspecified and promoting only `ready` issues into the build. Modes: `auto` (default — triage when it helps), `always`, `never`.
@@ -121,7 +127,7 @@ bash scripts/ralph-loop.sh --issue 42 --triage auto
 ### Isolate a run (`--worktree`)
 
 ```bash
-bash scripts/ralph-loop.sh --issue 42 --worktree
+bash scripts/ralph-loop.sh --issue 42 --worktree --project-dir {{APP_DIR}} --checkpoint "{{CHECKPOINT_COMMAND}}"
 ```
 
 `--worktree` runs the issue inside its own git worktree so your main working tree stays clean and back-to-back runs never trample each other. The trees live **inside** the repo at `.ralph/worktrees/issue-N/` (gitignored). A green run removes the tree (keeping the branch for review); a crash or `--plan-only` keeps it, and re-running the same command resumes it.
@@ -130,10 +136,10 @@ bash scripts/ralph-loop.sh --issue 42 --worktree
 
 ```bash
 # Work an explicit queue, one issue after another:
-bash scripts/ralph-loop.sh --issues 12,15,19
+bash scripts/ralph-loop.sh --issues 12,15,19 --project-dir {{APP_DIR}} --checkpoint "{{CHECKPOINT_COMMAND}}"
 
 # Or drain every issue Triage has marked ready:
-bash scripts/ralph-loop.sh --issues ready
+bash scripts/ralph-loop.sh --issues ready --project-dir {{APP_DIR}} --checkpoint "{{CHECKPOINT_COMMAND}}"
 ```
 
 `--issues` burns down a queue of issues serially, each isolated in its own worktree and opening its own draft PR. Watch and control the swarm with the dashboard:

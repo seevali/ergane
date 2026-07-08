@@ -125,7 +125,14 @@ STORIES_REL="${CHAPTER_DIR#$REPO_ROOT/}/stories"
 # Default checkpoint: syntax validation + prompt composition validation.
 # bash -n verifies both scripts parse as valid bash;
 # --dry-run-prompts validates all layer files exist and assemble correctly.
-DEFAULT_CHECKPOINT="bash -n $LOOP_SCRIPT && bash -n $SCRIPT_DIR/ralph-loop-system.sh && $LOOP_SCRIPT --dry-run-prompts >/dev/null"
+# The loop is workload-neutral (no baked-in --epic/--project-dir/--checkpoint
+# defaults), so the --dry-run-prompts clause must pass the same epic + project dir
+# this run builds, AND a --checkpoint (now required for every path). The inner
+# dry-run never eval's its checkpoint — it just has to satisfy the required-flag
+# validation — so `--checkpoint true` is the cheapest value that passes.
+# EPIC_REL is computed above; it is embedded (expanded now) and quoted so the child
+# loop, which eval's this checkpoint string, tolerates any spaces in the path.
+DEFAULT_CHECKPOINT="bash -n $LOOP_SCRIPT && bash -n $SCRIPT_DIR/ralph-loop-system.sh && $LOOP_SCRIPT --dry-run-prompts --project-dir . --epic \"$EPIC_REL\" --checkpoint true >/dev/null"
 
 # ──── Report and exec ────
 echo "→ PRD:      $PRD_REL"

@@ -1,18 +1,17 @@
 ## Review Standards
 
 PASS the review when the acceptance criteria are met AND the checkpoint
-(`cd src && npm run build && npm test --if-present`) succeeds — even if you
-would have written the code differently. Surface at most ONE blocking issue
-per review pass; let the Fix step land it before reviewing again.
+(`{{CHECKPOINT_CMD}}`) succeeds — even if you would have written the code
+differently. Surface at most ONE blocking issue per review pass; let the Fix
+step land it before reviewing again.
 
 BLOCK only on:
 1. Acceptance criteria not met — any story AC is unsatisfied or not demonstrable.
-2. Build or test failure — `tsc`/Vite build errors, or failing Vitest tests. Run the checkpoint to confirm.
-3. Stack-rule violation — a class component; a new `src/package.json` dependency the story did not call for (UI kit, charting/state/HTTP lib); use of localStorage-forbidden persistence; a non-`fetch` HTTP path.
-4. Type-safety escape hatch hiding a real error — `any`, `@ts-ignore`/`@ts-expect-error`, or non-null `!` used to silence the compiler rather than fix the type.
-5. Import reaching outside `src/`.
-6. Real bug or missing error/loading handling — unhandled rejected fetch, blanked-out UI on error where the AC says otherwise, unguarded `JSON.parse` of localStorage.
-7. Security issue.
+2. Checkpoint failure — the checkpoint command above does not pass (build or test failure). Run it to confirm.
+3. Security issue — an introduced vulnerability, a leaked secret, or unsafe handling of untrusted input.
+4. Escaping the project directory — imports, reads, or writes that reach outside the app directory the loop is working in.
+5. Violation of the project's conventions — a change that breaks a rule stated in the project's conventions file (`docs/project-conventions.md`, or the shipped stack-agnostic fallback): e.g. a new dependency the story did not call for, or a language/framework the project has not adopted.
+6. Real bug or missing error/loading handling that the acceptance criteria imply.
 
 DO NOT block on style: renames, comment density, test organization, or
 "I'd structure this differently." Those are nits, not blockers.

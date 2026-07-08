@@ -41,6 +41,26 @@ ESC=$'\033'
 PASS=0
 FAIL=0
 
+# ── Deterministic fixture for --dry-run-prompts ──
+# The loop is workload-neutral: --project-dir and --epic are required (no baked-in
+# defaults), so the dry-run invocation must supply its own tiny, stack-agnostic epic
+# and a scratch project dir. The fixture content is byte-identical between runs so the
+# golden stays deterministic; its temp path is normalized to <FIXTURE> below.
+FIXTURE_DIR="$(mktemp -d)"
+trap 'rm -rf "$FIXTURE_DIR"' EXIT
+FIXTURE_PROJECT="$FIXTURE_DIR/app"
+FIXTURE_EPIC="$FIXTURE_DIR/epic.md"
+mkdir -p "$FIXTURE_PROJECT"
+cat > "$FIXTURE_EPIC" <<'FIXTURE_EOF'
+# Fixture Epic
+
+## Epic 1: Fixture
+
+### Story 1.1: Fixture story
+
+As a fixture, I want one deterministic story so the dry-run golden is stable.
+FIXTURE_EOF
+
 pass() { printf '  \033[0;32mPASS\033[0m %s\n' "$1"; PASS=$((PASS + 1)); }
 fail() { printf '  \033[0;31mFAIL\033[0m %s\n' "$1"; FAIL=$((FAIL + 1)); }
 
@@ -48,17 +68,25 @@ fail() { printf '  \033[0;31mFAIL\033[0m %s\n' "$1"; FAIL=$((FAIL + 1)); }
 # portable so the golden is clone- and machine-independent. The exact same
 # transform is applied when capturing the golden and when comparing against it.
 normalize() {
+  # $REPO_ROOT normalization keeps the golden clone-/machine-independent. The
+  # fixture temp dir lives OUTSIDE the repo (mktemp), so it would otherwise leak a
+  # per-run path into any epic/project echoes — collapse it to a stable token too.
   sed -E \
     -e "s/${ESC}\[[0-9;]*m//g" \
     -e 's/\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\]/[TIMESTAMP]/g' \
-    -e "s|${REPO_ROOT}|<REPO_ROOT>|g"
+    -e "s|${REPO_ROOT}|<REPO_ROOT>|g" \
+    -e "s|${FIXTURE_DIR}|<FIXTURE>|g"
 }
 
 capture_dryrun() {
   # --dry-run-prompts never invokes claude (it prints resolved prompts and
-  # exits), so this is offline. stderr is dropped; only the prompt projection
-  # on stdout is the contract.
-  "$LOOP" --dry-run-prompts 2>/dev/null | normalize
+  # exits), so this is offline. Explicit --project-dir/--epic/--checkpoint satisfy
+  # the loop's required flags (workload-neutral, no defaults). --checkpoint is a
+  # FIXED literal 'true' (not a temp path) so the golden stays deterministic; the
+  # dry-run never eval's it — it just substitutes into the composed prompts, where
+  # 'true' now appears wherever the old demo checkpoint string used to. stderr is
+  # dropped; only the prompt projection on stdout is the contract.
+  "$LOOP" --dry-run-prompts --project-dir "$FIXTURE_PROJECT" --epic "$FIXTURE_EPIC" --checkpoint true 2>/dev/null | normalize
 }
 
 # Pull just the write-guard block out of the loop script (between the sentinels)

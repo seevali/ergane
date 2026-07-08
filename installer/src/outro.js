@@ -50,10 +50,17 @@ export function printOutro(result, plan, log = console.log) {
   const prdFile = scaffold ? 'docs/epics/project-prd.md' : (plan.taskSourcePath || 'docs/prd.md');
   const epicFile = scaffold ? 'docs/epics/project-stories.md' : prdFile;
 
-  const runFlags = [`--project-dir ${appDir}`, `--prd ${prdFile}`, `--epic ${epicFile}`];
-  if (plan.checkpointCommand) {
-    runFlags.push(`--checkpoint '${plan.checkpointCommand}'`);
-  }
+  // --checkpoint is REQUIRED by the loop (it bakes in no default), so the printed
+  // "next command" must always carry it or it would fail at the first flag check.
+  // The wizard requires a checkpoint answer; fall back to the same default the
+  // writer uses for the rendered project-conventions/template only as a safety net.
+  const checkpointCommand = plan.checkpointCommand || 'npm run build && npm test';
+  const runFlags = [
+    `--project-dir ${appDir}`,
+    `--prd ${prdFile}`,
+    `--epic ${epicFile}`,
+    `--checkpoint '${checkpointCommand}'`,
+  ];
   const runCommand = `bash scripts/ralph-loop.sh ${runFlags.join(' ')}`;
 
   log(`Your Ergane loop lives in ${projectPath}. cd there, then follow these steps:\n`);

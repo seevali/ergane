@@ -1,10 +1,11 @@
---stories all -> 1.1,1.2,1.3,1.4,1.5,1.6
+--stories all -> 1.1
 [TIMESTAMP] Loaded SM agent persona from <REPO_ROOT>/.claude/skills/bmad-create-story/SKILL.md
 [TIMESTAMP] Loaded Dev agent persona from <REPO_ROOT>/.claude/skills/bmad-dev-story/SKILL.md
 [TIMESTAMP] Loaded Review agent workflow from <REPO_ROOT>/.claude/skills/bmad-code-review
 [TIMESTAMP] Loaded PM agent persona from <REPO_ROOT>/.claude/skills/bmad-create-prd/SKILL.md
 [TIMESTAMP] Loaded Architect agent persona from <REPO_ROOT>/.claude/skills/bmad-create-architecture/SKILL.md
 [TIMESTAMP] Loaded Planner agent persona from <REPO_ROOT>/.claude/skills/bmad-create-epics-and-stories/SKILL.md
+[TIMESTAMP] Loaded project conventions from <REPO_ROOT>/docs/project-conventions.md
 === SM ===
 ## Execution Context
 
@@ -461,28 +462,46 @@ Activation is complete. Begin the workflow below.
 
 ---
 
-## Project Conventions (React / Vite / TypeScript)
+# Project Conventions — Ergane (single-track)
 
-- Stack: React 19 + Vite + TypeScript (`strict` on) in `src/`. Do not introduce Next.js, SSR, or any other framework.
-- Function components and hooks only. No class components. Reach for `useReducer` only where it genuinely simplifies state.
-- TypeScript strict mode: no `any` to silence the compiler, no `@ts-ignore`/`@ts-expect-error` to hide a real type error, no non-null `!` to paper over a possibly-undefined value. Fix the type, do not suppress it. A `tsc` error is a build break.
-- Lean stack — this is a deliberate constraint. Do NOT add a dependency to `src/package.json` (UI kit, charting lib, state lib, axios/swr/react-query, etc.) unless the story spec explicitly requires it. Use what's there: native `fetch` for HTTP, React hooks for state, plain CSS or CSS Modules for styling, inline SVG for charts.
-- Data fetching with native `fetch`. Handle loading and error states explicitly; do not swallow rejected promises.
-- Persistence is `localStorage` only. No IndexedDB, no backend, no database. Guard `JSON.parse` of stored values against malformed data.
-- Tests: Vitest + React Testing Library, colocated as `Component.test.tsx` beside `Component.tsx`. Prefer behavior-level assertions (what the user sees / what endpoint is called) over implementation detail.
-- Keep imports inside `src/`. Do not reach outside the app directory.
+These rules are injected into every loop agent's system prompt. They describe how
+work is done in THIS repo (the Ergane loop building itself). Follow them exactly.
 
-## Scope Discipline
+## Stack
 
-- Implement only what the current story spec asks for. No refactors of unrelated code, no "while I'm here" cleanups, no speculative abstractions.
-- If a story seems to require something the stack rules forbid (e.g. a new library), flag it as a question in your output rather than silently installing it.
-- Acceptance criteria are the contract. Make them demonstrable; do not gold-plate beyond them.
+- **Languages:** Bash (the loop and its wrappers) and Markdown (prompts, plans, docs).
+  Do NOT switch languages. Node.js / TypeScript is permitted ONLY inside two
+  directories: `installer/` (the guided-installer CLI package) and `tools/` (typed
+  helper modules the Bash loop shells out to). Everything else is Bash + Markdown.
+- **Bash style:** `set -euo pipefail` is mandatory in any new script. Always quote
+  variable expansions. Prefer `[[ ]]` over `[ ]`. Bash 4+ is assumed; POSIX-compat is
+  not a goal. Keep scripts shellcheck-clean where practical.
+- **Markdown style:** prompt files under `scripts/prompts/` carry no YAML frontmatter
+  unless the loader parses it; use `{{PLACEHOLDER}}` (double brace) for templated
+  values, never bash `${}` interpolation inside Markdown.
+- Do NOT add dependencies (npm packages, tools) unless the story explicitly requires them.
 
-## Checkpoint Command
+## Scope discipline
 
-The project checkpoint command is: cd src && npm run build && npm test --if-present
+- Implement only what the current story spec asks for. No refactors of unrelated code,
+  no "while I'm here" cleanups, no speculative abstractions.
+- Do NOT create new top-level directories unless the story explicitly requires one.
+- Self-contained repo: never reference paths outside this repo (no `../`, no absolute
+  paths into a parent tree). All paths are relative to the repo root.
+- Acceptance criteria are the contract. Make them demonstrable; do not gold-plate.
 
-Run this from the repo root to verify the app builds and tests pass.
+## Tests
+
+- Shell scripts: validate with `bash -n <script>` and any dry-run mode the script
+  provides (e.g. `--dry-run-prompts`).
+- The installer package: `cd installer && npm test`.
+- Chapter regression smokes under `system/chapters/*/tests/`.
+
+## Checkpoint command
+
+The project checkpoint command is: true
+
+Run it from the repo root to verify the build and tests pass.
 
 <!-- SM role — no additional overlay rules beyond common project conventions -->
 
@@ -998,28 +1017,46 @@ Activation is complete. Begin the workflow below.
 
 ---
 
-## Project Conventions (React / Vite / TypeScript)
+# Project Conventions — Ergane (single-track)
 
-- Stack: React 19 + Vite + TypeScript (`strict` on) in `src/`. Do not introduce Next.js, SSR, or any other framework.
-- Function components and hooks only. No class components. Reach for `useReducer` only where it genuinely simplifies state.
-- TypeScript strict mode: no `any` to silence the compiler, no `@ts-ignore`/`@ts-expect-error` to hide a real type error, no non-null `!` to paper over a possibly-undefined value. Fix the type, do not suppress it. A `tsc` error is a build break.
-- Lean stack — this is a deliberate constraint. Do NOT add a dependency to `src/package.json` (UI kit, charting lib, state lib, axios/swr/react-query, etc.) unless the story spec explicitly requires it. Use what's there: native `fetch` for HTTP, React hooks for state, plain CSS or CSS Modules for styling, inline SVG for charts.
-- Data fetching with native `fetch`. Handle loading and error states explicitly; do not swallow rejected promises.
-- Persistence is `localStorage` only. No IndexedDB, no backend, no database. Guard `JSON.parse` of stored values against malformed data.
-- Tests: Vitest + React Testing Library, colocated as `Component.test.tsx` beside `Component.tsx`. Prefer behavior-level assertions (what the user sees / what endpoint is called) over implementation detail.
-- Keep imports inside `src/`. Do not reach outside the app directory.
+These rules are injected into every loop agent's system prompt. They describe how
+work is done in THIS repo (the Ergane loop building itself). Follow them exactly.
 
-## Scope Discipline
+## Stack
 
-- Implement only what the current story spec asks for. No refactors of unrelated code, no "while I'm here" cleanups, no speculative abstractions.
-- If a story seems to require something the stack rules forbid (e.g. a new library), flag it as a question in your output rather than silently installing it.
-- Acceptance criteria are the contract. Make them demonstrable; do not gold-plate beyond them.
+- **Languages:** Bash (the loop and its wrappers) and Markdown (prompts, plans, docs).
+  Do NOT switch languages. Node.js / TypeScript is permitted ONLY inside two
+  directories: `installer/` (the guided-installer CLI package) and `tools/` (typed
+  helper modules the Bash loop shells out to). Everything else is Bash + Markdown.
+- **Bash style:** `set -euo pipefail` is mandatory in any new script. Always quote
+  variable expansions. Prefer `[[ ]]` over `[ ]`. Bash 4+ is assumed; POSIX-compat is
+  not a goal. Keep scripts shellcheck-clean where practical.
+- **Markdown style:** prompt files under `scripts/prompts/` carry no YAML frontmatter
+  unless the loader parses it; use `{{PLACEHOLDER}}` (double brace) for templated
+  values, never bash `${}` interpolation inside Markdown.
+- Do NOT add dependencies (npm packages, tools) unless the story explicitly requires them.
 
-## Checkpoint Command
+## Scope discipline
 
-The project checkpoint command is: cd src && npm run build && npm test --if-present
+- Implement only what the current story spec asks for. No refactors of unrelated code,
+  no "while I'm here" cleanups, no speculative abstractions.
+- Do NOT create new top-level directories unless the story explicitly requires one.
+- Self-contained repo: never reference paths outside this repo (no `../`, no absolute
+  paths into a parent tree). All paths are relative to the repo root.
+- Acceptance criteria are the contract. Make them demonstrable; do not gold-plate.
 
-Run this from the repo root to verify the app builds and tests pass.
+## Tests
+
+- Shell scripts: validate with `bash -n <script>` and any dry-run mode the script
+  provides (e.g. `--dry-run-prompts`).
+- The installer package: `cd installer && npm test`.
+- Chapter regression smokes under `system/chapters/*/tests/`.
+
+## Checkpoint command
+
+The project checkpoint command is: true
+
+Run it from the repo root to verify the build and tests pass.
 
 <!-- Dev role — no additional overlay rules beyond common project conventions -->
 
@@ -1445,44 +1482,61 @@ If the resolved `workflow.on_complete` is non-empty, follow it as the final term
 
 ---
 
-## Project Conventions (React / Vite / TypeScript)
+# Project Conventions — Ergane (single-track)
 
-- Stack: React 19 + Vite + TypeScript (`strict` on) in `src/`. Do not introduce Next.js, SSR, or any other framework.
-- Function components and hooks only. No class components. Reach for `useReducer` only where it genuinely simplifies state.
-- TypeScript strict mode: no `any` to silence the compiler, no `@ts-ignore`/`@ts-expect-error` to hide a real type error, no non-null `!` to paper over a possibly-undefined value. Fix the type, do not suppress it. A `tsc` error is a build break.
-- Lean stack — this is a deliberate constraint. Do NOT add a dependency to `src/package.json` (UI kit, charting lib, state lib, axios/swr/react-query, etc.) unless the story spec explicitly requires it. Use what's there: native `fetch` for HTTP, React hooks for state, plain CSS or CSS Modules for styling, inline SVG for charts.
-- Data fetching with native `fetch`. Handle loading and error states explicitly; do not swallow rejected promises.
-- Persistence is `localStorage` only. No IndexedDB, no backend, no database. Guard `JSON.parse` of stored values against malformed data.
-- Tests: Vitest + React Testing Library, colocated as `Component.test.tsx` beside `Component.tsx`. Prefer behavior-level assertions (what the user sees / what endpoint is called) over implementation detail.
-- Keep imports inside `src/`. Do not reach outside the app directory.
+These rules are injected into every loop agent's system prompt. They describe how
+work is done in THIS repo (the Ergane loop building itself). Follow them exactly.
 
-## Scope Discipline
+## Stack
 
-- Implement only what the current story spec asks for. No refactors of unrelated code, no "while I'm here" cleanups, no speculative abstractions.
-- If a story seems to require something the stack rules forbid (e.g. a new library), flag it as a question in your output rather than silently installing it.
-- Acceptance criteria are the contract. Make them demonstrable; do not gold-plate beyond them.
+- **Languages:** Bash (the loop and its wrappers) and Markdown (prompts, plans, docs).
+  Do NOT switch languages. Node.js / TypeScript is permitted ONLY inside two
+  directories: `installer/` (the guided-installer CLI package) and `tools/` (typed
+  helper modules the Bash loop shells out to). Everything else is Bash + Markdown.
+- **Bash style:** `set -euo pipefail` is mandatory in any new script. Always quote
+  variable expansions. Prefer `[[ ]]` over `[ ]`. Bash 4+ is assumed; POSIX-compat is
+  not a goal. Keep scripts shellcheck-clean where practical.
+- **Markdown style:** prompt files under `scripts/prompts/` carry no YAML frontmatter
+  unless the loader parses it; use `{{PLACEHOLDER}}` (double brace) for templated
+  values, never bash `${}` interpolation inside Markdown.
+- Do NOT add dependencies (npm packages, tools) unless the story explicitly requires them.
 
-## Checkpoint Command
+## Scope discipline
 
-The project checkpoint command is: cd src && npm run build && npm test --if-present
+- Implement only what the current story spec asks for. No refactors of unrelated code,
+  no "while I'm here" cleanups, no speculative abstractions.
+- Do NOT create new top-level directories unless the story explicitly requires one.
+- Self-contained repo: never reference paths outside this repo (no `../`, no absolute
+  paths into a parent tree). All paths are relative to the repo root.
+- Acceptance criteria are the contract. Make them demonstrable; do not gold-plate.
 
-Run this from the repo root to verify the app builds and tests pass.
+## Tests
+
+- Shell scripts: validate with `bash -n <script>` and any dry-run mode the script
+  provides (e.g. `--dry-run-prompts`).
+- The installer package: `cd installer && npm test`.
+- Chapter regression smokes under `system/chapters/*/tests/`.
+
+## Checkpoint command
+
+The project checkpoint command is: true
+
+Run it from the repo root to verify the build and tests pass.
 
 ## Review Standards
 
 PASS the review when the acceptance criteria are met AND the checkpoint
-(`cd src && npm run build && npm test --if-present`) succeeds — even if you
-would have written the code differently. Surface at most ONE blocking issue
-per review pass; let the Fix step land it before reviewing again.
+(`true`) succeeds — even if you would have written the code
+differently. Surface at most ONE blocking issue per review pass; let the Fix
+step land it before reviewing again.
 
 BLOCK only on:
 1. Acceptance criteria not met — any story AC is unsatisfied or not demonstrable.
-2. Build or test failure — `tsc`/Vite build errors, or failing Vitest tests. Run the checkpoint to confirm.
-3. Stack-rule violation — a class component; a new `src/package.json` dependency the story did not call for (UI kit, charting/state/HTTP lib); use of localStorage-forbidden persistence; a non-`fetch` HTTP path.
-4. Type-safety escape hatch hiding a real error — `any`, `@ts-ignore`/`@ts-expect-error`, or non-null `!` used to silence the compiler rather than fix the type.
-5. Import reaching outside `src/`.
-6. Real bug or missing error/loading handling — unhandled rejected fetch, blanked-out UI on error where the AC says otherwise, unguarded `JSON.parse` of localStorage.
-7. Security issue.
+2. Checkpoint failure — the checkpoint command above does not pass (build or test failure). Run it to confirm.
+3. Security issue — an introduced vulnerability, a leaked secret, or unsafe handling of untrusted input.
+4. Escaping the project directory — imports, reads, or writes that reach outside the app directory the loop is working in.
+5. Violation of the project's conventions — a change that breaks a rule stated in the project's conventions file (`docs/project-conventions.md`, or the shipped stack-agnostic fallback): e.g. a new dependency the story did not call for, or a language/framework the project has not adopted.
+6. Real bug or missing error/loading handling that the acceptance criteria imply.
 
 DO NOT block on style: renames, comment density, test organization, or
 "I'd structure this differently." Those are nits, not blockers.
