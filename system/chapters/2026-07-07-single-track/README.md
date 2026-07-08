@@ -1,6 +1,6 @@
 # Single Track — strip the demo, ship the example, name the loop Ergane
 
-**Status: In progress (opened 2026-07-07).**
+**Status: Complete (opened 2026-07-07, closed 2026-07-08).** All four slices shipped and independently verified: slice 1 `5e2869d` (rename), slice 2 `25e9e6c` (workload-neutral loop), slice 3 `725c398` (installer example task source), slice 4 `c339578` (demo strip + docs). Gates at close: installer suite 301/301, all 10 round-trip smokes green, drift gate green, fresh-install example E2E + documented run command exit 0. Still open (by design, §Definition of done item 4): npm publish, the owner's live `--write` dogfood run, the Metis directory move (D8), blog publication (D7).
 **Track:** System (this is the last chapter that needs the tag — see Decision D6).
 **Method:** supervised multi-agent orchestration (orchestrator specs → implementer → two adversarial reviewers → fixer → independent verification per slice), same as the [2026-06-25 round-trip chapter](../2026-06-25-github-issue-roundtrip/BUILD-JOURNAL.md) and the [2026-07-04 installer UX chapter](../2026-07-04-installer-ux-refresh/README.md).
 
