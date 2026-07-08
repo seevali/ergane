@@ -46,6 +46,62 @@ export const validators = {
   },
 };
 
+// ── Stack-shaped defaults, keyed by task source ───────────────────────────────
+//
+// The stack/app-dir/checkpoint answers must be *coherent with the task source* so
+// an install that accepts every default still produces a runnable project. The
+// 'example' source ships a complete React 19 + Vite + TS app (the Exchange Rates
+// Dashboard) whose PRD text is keyed to `src/` and whose checkpoint must `cd` into
+// the app dir before building — so example prefills those answers rather than
+// inheriting the generic scaffold defaults (which build at the repo root and would
+// never build the example app). cliAnswers / interactive edits always override these.
+const STANDARD_STACK_DEFAULTS = {
+  appDir: 'src',
+  checkpointCommand: 'npm run build && npm test',
+  stackDescription:
+    'React 19 + Vite + TypeScript (strict mode)\nCSS Modules for styling\nVitest + React Testing Library for tests\nFetch API for HTTP',
+};
+
+const EXAMPLE_STACK_DEFAULTS = {
+  appDir: 'src',
+  stackDescription: 'React 19 + Vite + TypeScript (strict)',
+};
+
+/**
+ * The default checkpoint command for a task source, DERIVED from the live app dir.
+ *
+ * The 'example' app is a Vite project rooted in the app directory, so its checkpoint
+ * must `cd <appDir>` before building. Deriving the prefix from the resolved appDir
+ * (rather than hardcoding `cd src`) keeps the checkpoint coherent when the user
+ * overrides ONLY the app dir — otherwise `--app-dir app` with the default checkpoint
+ * would ship `cd src && …`, which fails immediately (no `src/`) and contradicts
+ * GETTING-STARTED.md's own `cd <appDir>` prose. Mirrors how outro.js derives
+ * `--project-dir ${appDir}` dynamically. Non-example sources build at the repo root.
+ *
+ * @param {string} taskSource
+ * @param {string} appDir - the resolved app directory (already chosen/overridden)
+ * @returns {string}
+ */
+export function checkpointDefaultFor(taskSource, appDir) {
+  if (taskSource === 'example') {
+    const dir = (appDir ?? '').trim() || 'src';
+    return `cd ${dir} && npm run build && npm test --if-present`;
+  }
+  return STANDARD_STACK_DEFAULTS.checkpointCommand;
+}
+
+/**
+ * Return the stack-shaped defaults (appDir / stackDescription) appropriate for a
+ * task source. Only 'example' diverges from the generic defaults. The checkpoint
+ * default is NOT part of this record — it is derived from the live app dir via
+ * checkpointDefaultFor() so an app-dir override stays coherent with the checkpoint.
+ * @param {string} taskSource
+ * @returns {{appDir: string, stackDescription: string}}
+ */
+export function stackDefaultsFor(taskSource) {
+  return taskSource === 'example' ? EXAMPLE_STACK_DEFAULTS : STANDARD_STACK_DEFAULTS;
+}
+
 // ── Non-interactive plan builder ──────────────────────────────────────────────
 
 /**
@@ -59,15 +115,21 @@ export const validators = {
  * @returns {object} InstallPlan
  */
 function buildNonInteractivePlan(targetDir, classification, cliAnswers, log = console.log) {
-  const appDir = (cliAnswers.appDir ?? 'src').trim();
+  // Resolve the task source FIRST so the stack-shaped defaults can be keyed to it
+  // (an 'example' install needs a `cd src && …` checkpoint, not the generic one).
+  const taskSource = cliAnswers.taskSource ?? 'scaffold';
+  const stackDefaults = stackDefaultsFor(taskSource);
+
+  const appDir = (cliAnswers.appDir ?? stackDefaults.appDir).trim();
+  // Derive the checkpoint from the RESOLVED appDir (post-override), not a static
+  // default — so `--task-source example --app-dir app` yields `cd app && …`, not a
+  // stale `cd src && …` that fails at the first checkpoint invocation.
   const checkpointCommand = (
-    cliAnswers.checkpointCommand ?? 'npm run build && npm test'
+    cliAnswers.checkpointCommand ?? checkpointDefaultFor(taskSource, appDir)
   ).trim();
   const stackDescription = (
-    cliAnswers.stackDescription ??
-    'React 19 + Vite + TypeScript (strict mode)\nCSS Modules for styling\nVitest + React Testing Library for tests\nFetch API for HTTP'
+    cliAnswers.stackDescription ?? stackDefaults.stackDescription
   ).trim();
-  const taskSource = cliAnswers.taskSource ?? 'scaffold';
   const addNpmScripts = cliAnswers.skipNpmScript !== 'yes';
   const skipBmad = cliAnswers.useBmad === 'no';
 
@@ -238,20 +300,57 @@ export async function runWizard(targetDir, classification, preflightResults, opt
       );
     }
 
+    // ── Step 3c: Task source ──────────────────────────────────────────────────
+    // Asked BEFORE the stack questions so the chosen source can prefill coherent
+    // defaults (the 'example' app needs a `cd src && …` checkpoint, not the generic
+    // one). Only the select moves up; the follow-up path prompt (for 'existing')
+    // stays in its original position below so the text-prompt ordering is unchanged.
+    const taskSource = checkCancel(
+      await p.select({
+        message: 'How would you like to define the first task?',
+        options: [
+          {
+            value: 'scaffold',
+            label: 'Start with a template PRD and epic (recommended)',
+            hint: 'PRD = a short product-requirements doc; epic = a list of build stories. Includes comments explaining the format.',
+          },
+          {
+            value: 'example',
+            label: 'Ship the worked example (Exchange Rates Dashboard) — a complete, ready-to-run PRD + epic',
+            hint: 'No TODOs to fill: a real, authored plan the loop can build immediately. Best for a first run. Prefills a React 19 + Vite + TS stack.',
+          },
+          {
+            value: 'existing',
+            label: 'Point to an existing PRD and epic',
+            hint: 'PRD = product-requirements doc; epic = story list. Must follow the ### Story X.Y: Title format.',
+          },
+        ],
+        initialValue: 'scaffold',
+      }),
+    );
+
+    // Stack-shaped defaults keyed to the chosen source (see stackDefaultsFor). The
+    // example source prefills a `cd src`-rooted checkpoint so accepting every default
+    // yields a config that actually builds the shipped example app.
+    const stackDefaults = stackDefaultsFor(taskSource);
+
     // ── Step 4a: App directory ────────────────────────────────────────────────
     const appDirRaw = checkCancel(
       await p.text({
         message: 'Application source directory (relative to project root)',
-        initialValue: 'src',
+        initialValue: stackDefaults.appDir,
         validate: validators.appDir,
       }),
     );
 
     // ── Step 4b: Checkpoint command ───────────────────────────────────────────
+    // The example checkpoint's default is derived from the app dir the user just
+    // entered at Step 4a (checkpointDefaultFor), so overriding only the app dir and
+    // accepting this default still yields a coherent `cd <appDir> && …` checkpoint.
     const checkpointCommandRaw = checkCancel(
       await p.text({
         message: 'Checkpoint command (build + test; shown in loop prompts)',
-        initialValue: 'npm run build && npm test',
+        initialValue: checkpointDefaultFor(taskSource, appDirRaw.trim()),
         validate: validators.checkpointCommand,
       }),
     );
@@ -262,8 +361,7 @@ export async function runWizard(targetDir, classification, preflightResults, opt
     const stackDescriptionRaw = checkCancel(
       await p.text({
         message: 'Stack description (tech choices, testing approach, etc.)',
-        initialValue:
-          'React 19 + Vite + TypeScript (strict mode)\nCSS Modules for styling\nVitest + React Testing Library for tests\nFetch API for HTTP',
+        initialValue: stackDefaults.stackDescription,
         validate: validators.stackDescription,
       }),
     );
@@ -285,26 +383,9 @@ export async function runWizard(targetDir, classification, preflightResults, opt
       }),
     );
 
-    // ── Step 6: Task source ───────────────────────────────────────────────────
-    const taskSource = checkCancel(
-      await p.select({
-        message: 'How would you like to define the first task?',
-        options: [
-          {
-            value: 'scaffold',
-            label: 'Start with a template PRD and epic (recommended)',
-            hint: 'PRD = a short product-requirements doc; epic = a list of build stories. Includes comments explaining the format.',
-          },
-          {
-            value: 'existing',
-            label: 'Point to an existing PRD and epic',
-            hint: 'PRD = product-requirements doc; epic = story list. Must follow the ### Story X.Y: Title format.',
-          },
-        ],
-        initialValue: 'scaffold',
-      }),
-    );
-
+    // ── Step 6: Task-source follow-up (path to an existing PRD) ───────────────
+    // The task-source *choice* was made at Step 3c; only the 'existing' branch needs
+    // a follow-up (where the user's PRD/epic lives). Kept here to preserve prompt order.
     let taskSourcePath;
     if (taskSource === 'existing') {
       taskSourcePath = checkCancel(

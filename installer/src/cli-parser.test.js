@@ -109,9 +109,10 @@ test('validateCliArgs: throws on invalid --task-source value', () => {
   );
 });
 
-test('validateCliArgs: accepts scaffold/existing for --task-source', () => {
+test('validateCliArgs: accepts scaffold/existing/example for --task-source', () => {
   assert.doesNotThrow(() => validateCliArgs({ taskSource: 'scaffold' }));
   assert.doesNotThrow(() => validateCliArgs({ taskSource: 'existing' }));
+  assert.doesNotThrow(() => validateCliArgs({ taskSource: 'example' }));
 });
 
 test('validateCliArgs: throws on invalid --skip-npm-script value', () => {

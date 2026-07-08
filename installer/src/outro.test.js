@@ -152,6 +152,57 @@ test('printOutro: run command includes --checkpoint even when plan omits it', ()
   assert.ok(output.includes('--checkpoint '), 'should always emit --checkpoint so the printed command is runnable');
 });
 
+// ─── Test: 3-way task-source switch (scaffold / existing / example) ───────────
+
+test('printOutro: scaffold mode points at the two stub docs and tells the user to fill TODOs', () => {
+  const logs = [];
+  printOutro(makeResult(), makePlan({ taskSource: 'scaffold' }), (m = '') => logs.push(m));
+  const out = logs.join('\n');
+  assert.ok(out.includes('docs/epics/project-prd.md'), 'scaffold points --prd at the prd stub');
+  assert.ok(out.includes('docs/epics/project-stories.md'), 'scaffold points --epic at the stories stub');
+  assert.ok(/TODO/.test(out), 'scaffold copy tells the user to fill the TODOs');
+});
+
+test('printOutro: existing mode points --prd and --epic at the same brought file', () => {
+  const logs = [];
+  printOutro(makeResult(), makePlan({ taskSource: 'existing', taskSourcePath: 'my/plan.md' }), (m = '') => logs.push(m));
+  const out = logs.join('\n');
+  assert.ok(out.includes('--prd my/plan.md'), 'existing --prd points at the brought file');
+  assert.ok(out.includes('--epic my/plan.md'), 'existing --epic points at the same brought file');
+});
+
+test('printOutro: example mode points at docs/prd.md + the exchange-rates epic', () => {
+  const logs = [];
+  printOutro(
+    makeResult(),
+    makePlan({
+      taskSource: 'example',
+      appDir: 'src',
+      checkpointCommand: 'cd src && npm run build && npm test --if-present',
+    }),
+    (m = '') => logs.push(m),
+  );
+  const out = logs.join('\n');
+  assert.ok(out.includes('docs/prd.md'), 'example --prd points at docs/prd.md');
+  assert.ok(out.includes('docs/epics/exchange-rates-dashboard.md'), 'example --epic points at the exchange-rates epic');
+  assert.ok(out.includes('--project-dir src'), 'example run command carries --project-dir src');
+  assert.ok(
+    out.includes("--checkpoint 'cd src && npm run build && npm test --if-present'"),
+    'example run command carries the example checkpoint',
+  );
+});
+
+test('printOutro: example mode says the plan is ready (no TODO prompt)', () => {
+  const logs = [];
+  printOutro(makeResult(), makePlan({ taskSource: 'example' }), (m = '') => logs.push(m));
+  const out = logs.join('\n');
+  assert.ok(/ready-to-run/i.test(out), 'example copy says the plan is ready-to-run');
+  assert.ok(
+    !/fill the TODOs first/.test(out),
+    'example must NOT tell the user to fill TODOs — the plan is complete',
+  );
+});
+
 // ─── Test: Existing-project warning ──────────────────────────────────────────
 
 test('printOutro: shows existing-project warning when classification is existing-project', () => {

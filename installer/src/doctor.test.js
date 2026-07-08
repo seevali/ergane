@@ -30,8 +30,10 @@ function mockJqOnly(cmd) {
  * Write a minimal valid manifest to dir/.ralph/manifest.json.
  * @param {string} dir - temp directory
  * @param {Record<string, string>} files - { relPath: content } for files to create and manifest
+ * @param {Record<string, 'installer-owned'|'user-owned'>} [ownershipByPath] - per-file
+ *   ownership override; defaults to 'installer-owned' for any path not listed.
  */
-async function writeFixture(dir, files = {}) {
+async function writeFixture(dir, files = {}, ownershipByPath = {}) {
   await fs.mkdir(path.join(dir, '.ralph'), { recursive: true });
 
   const manifestFiles = {};
@@ -42,7 +44,8 @@ async function writeFixture(dir, files = {}) {
     const normalized = content.replace(/\r\n/g, '\n');
     const crypto = await import('node:crypto');
     const checksum = 'sha256:' + crypto.default.createHash('sha256').update(normalized).digest('hex');
-    manifestFiles[relPath] = { ownership: 'installer-owned', checksum, path: relPath };
+    const ownership = ownershipByPath[relPath] ?? 'installer-owned';
+    manifestFiles[relPath] = { ownership, checksum, path: relPath };
   }
 
   const manifest = {
@@ -223,6 +226,48 @@ test('doctor: user-editable file drift (project-conventions.md) → INFO, doctor
     assert.ok(infoFinding, 'should emit an informational customized finding');
     assert.equal(infoFinding.informational, true);
     assert.equal(result.passed, true, 'editing an invited-to-edit file must not fail doctor');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: user-owned file drift (example epic) → INFO not a false "run update" FAIL', async () => {
+  const dir = await makeTempDir();
+  try {
+    // The example task source lands docs/epics/exchange-rates-dashboard.md as
+    // user-owned and invites the user to edit it freely. `update` structurally skips
+    // user-owned files, so a checksum-mismatch FAIL that says "run update to restore"
+    // would be guidance that never works.
+    await writeFixture(
+      dir,
+      {
+        'docs/epics/exchange-rates-dashboard.md':
+          '## Epic 1: Exchange Rates Dashboard MVP\n\n### Story 1.1: App shell\n',
+      },
+      { 'docs/epics/exchange-rates-dashboard.md': 'user-owned' },
+    );
+
+    await fs.appendFile(
+      path.join(dir, 'docs', 'epics', 'exchange-rates-dashboard.md'),
+      '\n### Story 1.7: my own addition\n',
+    );
+
+    const result = await runDoctor(dir, {
+      log: () => {},
+      checkCommand: mockCommandFound,
+    });
+
+    const failFinding = result.findings.find(
+      (f) => f.check === 'file-checksum:docs/epics/exchange-rates-dashboard.md',
+    );
+    assert.ok(!failFinding, 'a user-owned file edit must not emit a red checksum FAIL');
+
+    const infoFinding = result.findings.find(
+      (f) => f.check === 'file-customized:docs/epics/exchange-rates-dashboard.md',
+    );
+    assert.ok(infoFinding, 'should emit an informational customized finding');
+    assert.equal(infoFinding.informational, true);
+    assert.equal(result.passed, true, 'editing a user-owned file must not fail doctor');
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
@@ -495,6 +540,99 @@ Content.
     assert.ok(
       epicFinding.message.includes('parseable') || epicFinding.message.includes('format'),
       'message should indicate a format problem',
+    );
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: example epic (docs/epics/exchange-rates-dashboard.md) story headers are validated', async () => {
+  const dir = await makeTempDir();
+  try {
+    const epic = `## Epic 1: Exchange Rates Dashboard MVP
+
+### Story 1.1: App shell
+
+Content.
+
+### Story 1.2: Persistence
+
+More.
+`;
+    await writeFixture(dir, {
+      'docs/epics/exchange-rates-dashboard.md': epic,
+      'docs/prd.md': '# PRD: Exchange Rates Dashboard\n\nNo stories here — this is a PRD.\n',
+    });
+
+    const { findings } = await runDoctor(dir, {
+      log: () => {},
+      checkCommand: mockCommandFound,
+    });
+
+    // The manifest-driven check finds the example epic by its real name (not hardcoded).
+    const epicFinding = findings.find(
+      (f) => f.check === 'epic-headers:docs/epics/exchange-rates-dashboard.md',
+    );
+    assert.ok(epicFinding, 'the example epic should be validated, not silently skipped');
+    assert.equal(epicFinding.status, 'pass');
+    assert.ok(epicFinding.message.includes('2'), 'should count both story headers');
+
+    // A PRD outside docs/epics/ is not an epic and must not be scanned as one.
+    assert.ok(
+      !findings.some((f) => f.check === 'epic-headers:docs/prd.md'),
+      'docs/prd.md is a PRD, not an epic — it must not be scanned for story headers',
+    );
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: a drifted/malformed example epic is reported as a failure', async () => {
+  const dir = await makeTempDir();
+  try {
+    // "### Story" present but not the X.Y numeric format → malformed, must FAIL.
+    const epic = `## Epic 1: Exchange Rates Dashboard MVP
+
+### Story one: Malformed header
+
+Content.
+`;
+    await writeFixture(dir, {
+      'docs/epics/exchange-rates-dashboard.md': epic,
+    });
+
+    const { findings } = await runDoctor(dir, {
+      log: () => {},
+      checkCommand: mockCommandFound,
+    });
+
+    const epicFinding = findings.find(
+      (f) => f.check === 'epic-headers:docs/epics/exchange-rates-dashboard.md',
+    );
+    assert.ok(epicFinding, 'a malformed example epic should produce a finding');
+    assert.equal(epicFinding.status, 'fail');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor: *-prd.md under docs/epics/ is skipped by the epic-headers check', async () => {
+  const dir = await makeTempDir();
+  try {
+    // A PRD stub carries no story headers; even under docs/epics/ it must be skipped
+    // (behaviour preserved from the pre-generalization hardcoded skip of *-prd.md).
+    await writeFixture(dir, {
+      'docs/epics/project-prd.md': '# PRD stub\n\nNo stories.\n',
+    });
+
+    const { findings } = await runDoctor(dir, {
+      log: () => {},
+      checkCommand: mockCommandFound,
+    });
+
+    assert.ok(
+      !findings.some((f) => f.check === 'epic-headers:docs/epics/project-prd.md'),
+      '*-prd.md must not be scanned as an epic',
     );
   } finally {
     await fs.rm(dir, { recursive: true, force: true });

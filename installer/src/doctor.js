@@ -116,10 +116,21 @@ export async function runDoctor(targetPath, opts = {}) {
       if (exists) {
         const actualChecksum = await hashFile(fullPath);
         if (actualChecksum !== fileEntry.checksum) {
-          if (isUserEditableInstalledFile(filePath)) {
-            // The outro invites editing this file — divergence is expected, not a
-            // failure. Report it as INFO so doctor can still pass (it never could
-            // before, permanently red on a file users were told to customize).
+          // Two kinds of drift are EXPECTED customization, not failures:
+          //   1. user-owned files (the PRD, epic, source the user authors/edits) —
+          //      `update` structurally skips every user-owned path (writer.js
+          //      executeUpdate), so a "run update to restore" remediation would be
+          //      false: update will never rewrite these. The example task source
+          //      explicitly invites editing them ("edit them freely; update won't
+          //      clobber them"), so a drift FAIL here is unreachable-to-clear.
+          //   2. installer-owned files the outro invites editing (project-conventions.md,
+          //      scripts/prompts/**) — see isUserEditableInstalledFile.
+          // Manifest-recorded ownership is authoritative for (1); the path allowlist
+          // handles (2). Everything else installer-owned is ralph-owned (drift = FAIL).
+          const userOwned = fileEntry.ownership === 'user-owned';
+          if (userOwned || isUserEditableInstalledFile(filePath)) {
+            // Report as INFO so doctor can still pass (it never could before —
+            // permanently red on a file the user was told to customize).
             findings.push({
               check: `file-customized:${filePath}`,
               status: 'info',
@@ -231,9 +242,19 @@ export async function runDoctor(targetPath, opts = {}) {
     message: ghMessage,
   });
 
-  // Check 5: Epic story headers are parseable
+  // Check 5: Epic story headers are parseable.
+  // Manifest-driven so it validates whichever epic the install actually shipped —
+  // the scaffold stub (docs/epics/project-stories.md) OR the worked example
+  // (docs/epics/exchange-rates-dashboard.md) — instead of a hardcoded name pair that
+  // would silently skip the example's epic. Convention (shared with the E2E
+  // assertions): every `.md` under docs/epics/ is an epic to validate, EXCEPT
+  // `*-prd.md` (requirements docs, not story lists). PRDs written outside docs/epics/
+  // (e.g. the example's docs/prd.md) are not epics and are not scanned here.
   if (manifest) {
-    const epicPaths = ['docs/epics/project-stories.md', 'docs/epics/project-prd.md'];
+    const epicPaths = Object.keys(manifest.files ?? {}).filter((p) => {
+      const n = p.replace(/\\/g, '/');
+      return n.startsWith('docs/epics/') && n.endsWith('.md') && !n.endsWith('-prd.md');
+    });
     for (const epicPath of epicPaths) {
       const fullPath = path.join(targetPath, epicPath);
       let content;

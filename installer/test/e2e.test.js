@@ -307,6 +307,79 @@ describe('E2E: Ergane Installer', () => {
     }
   });
 
+  // ── Example task source: ships a ready-to-run PRD + epic, doctor-clean ────────
+
+  it('example task source: install ships a runnable example, doctor-clean, preserved on uninstall', { timeout: 120000 }, async () => {
+    const { dir, cleanup } = await createEmptyFixture();
+    try {
+      // Install with --task-source example (non-interactive, no BMAD network call).
+      const installResult = runCli([
+        'install',
+        '--directory', dir,
+        '--yes',
+        '--use-bmad', 'no',
+        '--task-source', 'example',
+      ]);
+      assert.equal(
+        installResult.exitCode, 0,
+        `Example install exited ${installResult.exitCode}:\nstdout: ${installResult.stdout}\nstderr: ${installResult.stderr}`,
+      );
+
+      // Both authored files are present with real (not placeholder) content.
+      const prdPath = path.join(dir, 'docs/prd.md');
+      const epicPath = path.join(dir, 'docs/epics/exchange-rates-dashboard.md');
+      const prd = await fs.readFile(prdPath, 'utf8');
+      const epic = await fs.readFile(epicPath, 'utf8');
+      assert.ok(prd.includes('Exchange Rates'), 'PRD carries the real authored content');
+      assert.ok(/^###\s+Story\s+1\.1:/m.test(epic), 'epic carries real story headers');
+      assert.ok(!/\{\{[A-Z_]+\}\}/.test(prd + epic), 'example files are verbatim (no placeholders)');
+
+      // The scaffold stubs must NOT be present (this is the example, not the scaffold).
+      const stubGone = await fs.access(path.join(dir, 'docs/epics/project-prd.md'))
+        .then(() => false).catch(() => true);
+      assert.ok(stubGone, 'example install must not also write the scaffold stubs');
+
+      // GETTING-STARTED says ready-to-run and names the real epic in its run command.
+      const guide = await fs.readFile(path.join(dir, 'GETTING-STARTED.md'), 'utf8');
+      assert.ok(/ready to run|ready-to-run/i.test(guide), 'guide advertises ready-to-run');
+      assert.ok(/no TODOs?/i.test(guide), 'guide states there are no TODOs to fill');
+      assert.ok(
+        guide.includes('docs/epics/exchange-rates-dashboard.md'),
+        'guide run command points at the real epic path',
+      );
+
+      // Outro (captured stdout) points the user at the real paths + required flags.
+      assert.ok(
+        installResult.stdout.includes('docs/epics/exchange-rates-dashboard.md'),
+        `outro should name the example epic; stdout:\n${installResult.stdout}`,
+      );
+      assert.ok(
+        installResult.stdout.includes('--checkpoint'),
+        'outro run command always carries the required --checkpoint flag',
+      );
+
+      // Doctor passes — the manifest-driven epic-headers check validated the example epic.
+      const doctorResult = runCli(['doctor', '--directory', dir], { timeout: 15000 });
+      assert.equal(
+        doctorResult.exitCode, 0,
+        `Doctor exited ${doctorResult.exitCode}:\nstdout: ${doctorResult.stdout}\nstderr: ${doctorResult.stderr}`,
+      );
+
+      await assertManifestValid(dir);
+
+      // Uninstall (default --yes) preserves the user-owned example files.
+      const uninstallResult = runCli(['uninstall', '--directory', dir, '--yes']);
+      assert.equal(
+        uninstallResult.exitCode, 0,
+        `Uninstall failed: ${uninstallResult.stderr}`,
+      );
+      await fs.access(prdPath); // still present — throws if removed
+      await fs.access(epicPath); // still present — throws if removed
+    } finally {
+      await cleanup();
+    }
+  });
+
   // ── Bonus: uninstall removes installer-owned files ────────────────────────────
 
   it('bonus: uninstall removes installer-owned files', { timeout: 90000 }, async () => {

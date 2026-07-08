@@ -39,16 +39,32 @@ export function printOutro(result, plan, log = console.log) {
 
   const projectPath = plan.targetDir === '.' ? 'current directory' : plan.targetDir;
 
-  // Derive the files the writer actually emitted so the run command points at real paths.
+  // Derive the files the writer actually emitted so the run command points at real
+  // paths. Three task sources, three (prd, epic) pairs — an explicit switch, not a
+  // boolean, so a not-yet-considered value never silently falls into the wrong copy.
   const appDir = plan.appDir || 'src';
-  const scaffold = plan.taskSource !== 'existing';
-  // In "existing" mode the wizard collects a single file (taskSourcePath) that
-  // serves as BOTH the PRD and the epic (it must carry the `### Story X.Y` headers),
-  // so --prd and --epic point at the same file. Never derive two different phantom
-  // paths here — that made step 3 reference a docs/epics/your-epic.md that is never
-  // scaffolded.
-  const prdFile = scaffold ? 'docs/epics/project-prd.md' : (plan.taskSourcePath || 'docs/prd.md');
-  const epicFile = scaffold ? 'docs/epics/project-stories.md' : prdFile;
+  const taskSource = plan.taskSource ?? 'scaffold';
+  const scaffold = taskSource === 'scaffold';
+  const ready = taskSource === 'example';
+
+  let prdFile;
+  let epicFile;
+  if (taskSource === 'existing') {
+    // "existing" mode: the wizard collects a single file (taskSourcePath) that serves
+    // as BOTH the PRD and the epic (it must carry the `### Story X.Y` headers), so
+    // --prd and --epic point at the same file. Never derive two different phantom
+    // paths — that made step 3 reference a docs/epics/your-epic.md never scaffolded.
+    prdFile = plan.taskSourcePath || 'docs/prd.md';
+    epicFile = prdFile;
+  } else if (taskSource === 'example') {
+    // The worked example lands at the repo's own real paths (writer.js example branch).
+    prdFile = 'docs/prd.md';
+    epicFile = 'docs/epics/exchange-rates-dashboard.md';
+  } else {
+    // scaffold: the two rendered stub docs.
+    prdFile = 'docs/epics/project-prd.md';
+    epicFile = 'docs/epics/project-stories.md';
+  }
 
   // --checkpoint is REQUIRED by the loop (it bakes in no default), so the printed
   // "next command" must always carry it or it would fail at the first flag check.
@@ -67,12 +83,19 @@ export function printOutro(result, plan, log = console.log) {
   log('📋 Next steps:\n');
 
   log(`1. Read the guide:              cat GETTING-STARTED.md`);
-  log(`2. Author your plan:            edit ${prdFile}`);
-  if (scaffold) {
+  if (ready) {
+    // The example ships a complete, authored plan — nothing to fill in.
+    log(`2. Review the worked example:   ${prdFile}`);
     log(`                               and  ${epicFile}`);
+    log(`                               (a complete, ready-to-run PRD + epic — no TODOs to fill)`);
+  } else {
+    log(`2. Author your plan:            edit ${prdFile}`);
+    if (scaffold) {
+      log(`                               and  ${epicFile}`);
+    }
+    log(`                               (the loop builds exactly what the epic lists —`);
+    log(`                                an empty epic builds nothing, so fill the TODOs first)`);
   }
-  log(`                               (the loop builds exactly what the epic lists —`);
-  log(`                                an empty epic builds nothing, so fill the TODOs first)`);
   log(`3. Start your first loop:       ${runCommand}`);
   log(`   💰 Heads up: the loop makes paid Anthropic API calls. A small story is usually`);
   log(`      cents to a few dollars; cap spend with --budget-per-story-usd (see the guide).`);

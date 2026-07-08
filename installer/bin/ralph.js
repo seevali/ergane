@@ -56,7 +56,7 @@ program
   .option('--checkpoint-command <cmd>', 'Checkpoint command (build + test)')
   .option('--stack-description <text>', 'Stack description (tech choices, testing approach)')
   .option('--use-bmad <yes|no>', 'Install BMAD method modules alongside the loop')
-  .option('--task-source <scaffold|existing>', 'Task source: scaffold template or existing PRD/epic')
+  .option('--task-source <scaffold|existing|example>', 'Task source: scaffold template, existing PRD/epic, or the worked example')
   .option('--skip-npm-script <yes|no>', 'Skip adding npm scripts for the loop')
   .action(async (options) => {
     // --list-options: print available flags and exit 0

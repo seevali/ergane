@@ -132,6 +132,56 @@ test('taskSourcePath is undefined when user selects scaffold', async () => {
   assert.equal(plan.taskSourcePath, undefined);
 });
 
+// ─── Task source: example (worked example prefill) ────────────────────────────
+
+test('selecting example prefills the stack-shaped answers (interactive)', async () => {
+  // No text overrides: each text prompt auto-answers with its initialValue, which the
+  // example branch prefills. This proves the select→prefill wiring is coherent so a
+  // user who accepts every default lands on a config that builds the example app.
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    prompts: buildMockPrompts({ selects: ['example'] }),
+  });
+  assert.equal(plan.taskSource, 'example');
+  assert.equal(plan.appDir, 'src');
+  assert.equal(plan.checkpointCommand, 'cd src && npm run build && npm test --if-present');
+  assert.equal(plan.stackDescription, 'React 19 + Vite + TypeScript (strict)');
+  assert.equal(plan.taskSourcePath, undefined, 'example needs no follow-up path prompt');
+});
+
+test('example prefill is only a default — explicit answers still win (interactive)', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    prompts: buildMockPrompts({
+      selects: ['example'],
+      texts: ['web', 'make ci', 'Svelte', '3', '200000'],
+    }),
+  });
+  assert.equal(plan.taskSource, 'example');
+  assert.equal(plan.appDir, 'web');
+  assert.equal(plan.checkpointCommand, 'make ci');
+  assert.equal(plan.stackDescription, 'Svelte');
+});
+
+test('example checkpoint tracks an overridden app dir when the checkpoint is left at its default (interactive)', async () => {
+  // Override ONLY the app-dir prompt (Step 4a); accept the checkpoint prompt's
+  // default (the mock returns opts.initialValue for the unspecified indices). The
+  // checkpoint default must derive from the entered app dir so the two stay coherent
+  // — otherwise the install ships `cd src && …` against an `app/`-only tree, which
+  // fails at the first checkpoint and contradicts GETTING-STARTED's `cd app` prose.
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    prompts: buildMockPrompts({
+      selects: ['example'],
+      texts: ['app'], // appDir only; checkpoint/stack/retries/tokens keep their defaults
+    }),
+  });
+  assert.equal(plan.taskSource, 'example');
+  assert.equal(plan.appDir, 'app');
+  assert.equal(
+    plan.checkpointCommand,
+    'cd app && npm run build && npm test --if-present',
+    'checkpoint default must cd into the overridden app dir, not the stale src default',
+  );
+});
+
 // ─── Extras opt-out ───────────────────────────────────────────────────────────
 
 test('gitignoreEntries is empty when user opts out', async () => {
@@ -489,6 +539,56 @@ test('non-interactive plan: cliAnswers.taskSource=existing is respected', async 
     log: () => {},
   });
   assert.equal(plan.taskSource, 'existing');
+});
+
+test('non-interactive plan: taskSource=example prefills the example stack defaults', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    cliAnswers: { taskSource: 'example' },
+    log: () => {},
+  });
+  assert.equal(plan.taskSource, 'example');
+  assert.equal(plan.appDir, 'src');
+  assert.equal(plan.checkpointCommand, 'cd src && npm run build && npm test --if-present');
+  assert.equal(plan.stackDescription, 'React 19 + Vite + TypeScript (strict)');
+});
+
+test('non-interactive plan: explicit flags override the example prefill', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    cliAnswers: { taskSource: 'example', checkpointCommand: 'make ci', appDir: 'web' },
+    log: () => {},
+  });
+  assert.equal(plan.taskSource, 'example');
+  assert.equal(plan.checkpointCommand, 'make ci');
+  assert.equal(plan.appDir, 'web');
+});
+
+test('non-interactive plan: scaffold keeps the generic checkpoint default (no example bleed)', async () => {
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    cliAnswers: { taskSource: 'scaffold' },
+    log: () => {},
+  });
+  assert.equal(plan.checkpointCommand, 'npm run build && npm test');
+});
+
+test('non-interactive plan: example checkpoint tracks --app-dir when checkpoint is not overridden', async () => {
+  // The incoherence path: pick the example, override ONLY --app-dir. The derived
+  // checkpoint must `cd` into the overridden dir so the printed run command and
+  // GETTING-STARTED prose both stay runnable.
+  const plan = await runWizard('/tmp/test-dir', 'empty', {}, {
+    useDefaults: true,
+    cliAnswers: { taskSource: 'example', appDir: 'app' },
+    log: () => {},
+  });
+  assert.equal(plan.taskSource, 'example');
+  assert.equal(plan.appDir, 'app');
+  assert.equal(
+    plan.checkpointCommand,
+    'cd app && npm run build && npm test --if-present',
+    'checkpoint must cd into the overridden --app-dir, not the stale src default',
+  );
 });
 
 test('non-interactive plan: cliAnswers.useBmad=no sets skipBmad=true', async () => {

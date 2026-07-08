@@ -7,7 +7,9 @@ import { getPackageName, cliInvocation } from './pkg.js';
 import { tryLoadManifest } from './manifest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TEMPLATES_DIR = path.join(__dirname, '..', 'templates', 'loop');
+const TEMPLATES_ROOT = path.join(__dirname, '..', 'templates');
+const TEMPLATES_DIR = path.join(TEMPLATES_ROOT, 'loop');
+const EXAMPLE_DIR = path.join(TEMPLATES_ROOT, 'example');
 
 // ── Pure functions (fully testable without filesystem) ────────────────────────
 
@@ -113,6 +115,16 @@ async function loadTemplateFile(templateName) {
   return fs.readFile(templatePath, 'utf8');
 }
 
+/**
+ * Load a worked-example template (templates/example/*). These are verbatim copies
+ * of the authored Exchange Rates Dashboard PRD/epic — NOT run through renderTemplate,
+ * because they carry no {{…}} placeholders.
+ * @param {string} name - e.g. 'prd.md', 'epic.md'
+ */
+async function loadExampleFile(name) {
+  return fs.readFile(path.join(EXAMPLE_DIR, name), 'utf8');
+}
+
 async function gatherPromptFiles() {
   const promptsDir = path.join(TEMPLATES_DIR, 'prompts');
   const files = new Map();
@@ -204,7 +216,11 @@ export async function buildWriteMap(plan) {
 
   // Always: GETTING-STARTED.md (user-owned). Rendered so the guide names the real
   // CLI (PACKAGE_NAME) and the configured app dir instead of literal placeholders.
-  const gettingStartedTpl = await loadTemplateFile('GETTING-STARTED.md');
+  // The 'example' source ships a distinct variant whose copy says "ready to run —
+  // no TODOs" (the scaffold variant tells the reader to fill in placeholders first).
+  const gettingStartedTplName =
+    plan.taskSource === 'example' ? 'GETTING-STARTED.example.md' : 'GETTING-STARTED.md';
+  const gettingStartedTpl = await loadTemplateFile(gettingStartedTplName);
   const gettingStarted = renderTemplate(gettingStartedTpl, substitutions);
   validateNoUnsubstituted(gettingStarted);
   writeMap.set('GETTING-STARTED.md', gettingStarted);
@@ -225,6 +241,19 @@ export async function buildWriteMap(plan) {
     const stories = renderTemplate(storiesTpl, substitutions);
     validateNoUnsubstituted(stories);
     writeMap.set('docs/epics/project-stories.md', stories);
+  } else if (plan.taskSource === 'example') {
+    // Worked example: the authored Exchange Rates Dashboard PRD + epic, written
+    // VERBATIM (no renderTemplate pass — these files carry no {{…}} placeholders).
+    // Landed at the same paths this repo itself used so the install reads as a real
+    // project and the epic keeps its `## Epic 1:` header (which the progress UI needs).
+    // Both are user-owned via getOwnership()'s default (they don't match the
+    // installer-owned allowlist), so `update` never clobbers mid-demo edits and
+    // `uninstall` preserves them by default.
+    const examplePrd = await loadExampleFile('prd.md');
+    writeMap.set('docs/prd.md', examplePrd);
+
+    const exampleEpic = await loadExampleFile('epic.md');
+    writeMap.set('docs/epics/exchange-rates-dashboard.md', exampleEpic);
   }
 
   // Conditional: .gitignore entries (installer-owned, append-only)

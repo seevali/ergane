@@ -51,12 +51,12 @@ const FLAG_DEFINITIONS = [
   },
   {
     key: 'taskSource',
-    flag: '--task-source <scaffold|existing>',
-    description: 'Task source: scaffold template files or point to existing PRD/epic',
+    flag: '--task-source <scaffold|existing|example>',
+    description: 'Task source: scaffold template files, point to existing PRD/epic, or ship the worked example',
     defaultValue: 'scaffold',
     validate(v) {
-      if (!['scaffold', 'existing'].includes(v)) {
-        return `Expected: scaffold | existing, got: ${v}`;
+      if (!['scaffold', 'existing', 'example'].includes(v)) {
+        return `Expected: scaffold | existing | example, got: ${v}`;
       }
       return null;
     },

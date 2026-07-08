@@ -785,6 +785,33 @@ test('buildWriteMap includes scaffold docs only when taskSource is scaffold', as
   assert.ok(!existingMap.has('docs/epics/project-stories.md'), 'existing should not include stories');
 });
 
+test('buildWriteMap writes the example PRD/epic verbatim when taskSource is example', async () => {
+  const plan = {
+    targetDir: os.tmpdir(),
+    appDir: 'src',
+    checkpointCommand: 'cd src && npm run build && npm test --if-present',
+    stackDescription: 'React 19 + Vite + TypeScript (strict)',
+    addGitignoreEntries: false,
+    taskSource: 'example',
+  };
+
+  const map = await buildWriteMap(plan);
+
+  // Lands at the repo's own real paths, not the scaffold stub paths.
+  assert.ok(map.has('docs/prd.md'), 'example writes docs/prd.md');
+  assert.ok(map.has('docs/epics/exchange-rates-dashboard.md'), 'example writes the exchange-rates epic');
+  assert.ok(!map.has('docs/epics/project-prd.md'), 'example must not write the scaffold prd stub');
+  assert.ok(!map.has('docs/epics/project-stories.md'), 'example must not write the scaffold stories stub');
+
+  const prd = map.get('docs/prd.md');
+  assert.ok(prd.includes('Exchange Rates'), 'example prd carries the real authored content');
+  assert.ok(!/\{\{[A-Z_]+\}\}/.test(prd), 'example prd is written verbatim — no {{…}} placeholders');
+
+  const epic = map.get('docs/epics/exchange-rates-dashboard.md');
+  assert.ok(/^###\s+Story\s+1\.1:/m.test(epic), 'example epic keeps its story headers');
+  assert.ok(/^##\s+Epic\s+1:/m.test(epic), 'example epic keeps its `## Epic 1:` header (progress UI needs it)');
+});
+
 test('buildWriteMap uses default values when optional plan fields are missing', async () => {
   const plan = {
     targetDir: os.tmpdir(),
@@ -795,6 +822,50 @@ test('buildWriteMap uses default values when optional plan fields are missing', 
   // Should not throw even with missing appDir/checkpointCommand/stackDescription
   const writeMap = await buildWriteMap(plan);
   assert.ok(writeMap.size > 0, 'should produce a non-empty write map with defaults');
+});
+
+test('example install records the PRD/epic as user-owned and ships the example guide', async () => {
+  const dir = await makeTempDir();
+  try {
+    const plan = {
+      targetDir: dir,
+      classification: 'empty',
+      appDir: 'src',
+      checkpointCommand: 'cd src && npm run build && npm test --if-present',
+      stackDescription: 'React 19 + Vite + TypeScript (strict)',
+      taskSource: 'example',
+      addGitignoreEntries: false,
+      wizardAnswers: {},
+      force: false,
+      yes: true,
+      skipBmad: true,
+    };
+
+    const result = await writeInstall(plan, {
+      log: () => {},
+      installBmad: async () => ({ success: true }),
+    });
+
+    assert.equal(result.status, 'success');
+    // Ownership falls out of getOwnership()'s default → user-owned, so update/uninstall
+    // never clobber a user's mid-demo edits.
+    assert.equal(result.manifest.files['docs/prd.md'].ownership, 'user-owned');
+    assert.equal(
+      result.manifest.files['docs/epics/exchange-rates-dashboard.md'].ownership,
+      'user-owned',
+    );
+
+    // The GETTING-STARTED guide is the example variant: honest "ready to run" copy.
+    const guide = await fs.readFile(path.join(dir, 'GETTING-STARTED.md'), 'utf8');
+    assert.ok(/ready to run|ready-to-run/i.test(guide), 'example guide advertises ready-to-run');
+    assert.ok(/no TODOs?/i.test(guide), 'example guide states there are no TODOs to fill');
+    assert.ok(
+      guide.includes('docs/epics/exchange-rates-dashboard.md'),
+      'example guide points the run command at the real epic path',
+    );
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });
 
 // ─── BMAD integration ─────────────────────────────────────────────────────────
