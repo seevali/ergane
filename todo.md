@@ -1,3 +1,5 @@
+> **Historical document (frozen).** This is the original setup log for the demo repository, completed 2026-05-24. The Demo Track it describes (the Exchange Rates Dashboard under `src/`, the root `docs/prd.md`/epic) was **retired on 2026-07-07** when the repo was renamed Ergane and went single-track — see the [single-track chapter](system/chapters/2026-07-07-single-track/README.md). Kept as a record; nothing below is current.
+
 # Preparing a Demo Repository to Showcase Ralph Loop + BMAD Agents
 
 This demo repo will live as its own GitHub repository, so everything must be self-contained — do not depend on the parent Metis `_bmad/` install or anything outside this folder.

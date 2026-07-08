@@ -2,7 +2,7 @@
 
 A chronological log of how this repo has evolved. Most-recent first.
 
-Entries are tagged **`[Demo]`** (Demo Track — the frozen showcase) or **`[System]`** (System Track — loop-improvement work under [`system/`](system/)). See the [README's Two Tracks section](README.md#two-tracks) for the architecture.
+This repo is single-track as of 2026-07-07. **New entries are untagged.** Entries below tagged **`[Demo]`** or **`[System]`** are historical, from the two-track era (2026-05-24 to 2026-07-07): `[Demo]` was the clonable Exchange Rates Dashboard showcase, `[System]` was loop-improvement work under [`system/`](system/). That split was dissolved when the demo was retired and the repo renamed Ergane — see the [single-track chapter](system/chapters/2026-07-07-single-track/README.md). Historical entries keep their tags as a record.
 
 For forward-looking design documents, browse [`system/chapters/`](system/chapters/) — one folder per improvement effort.
 

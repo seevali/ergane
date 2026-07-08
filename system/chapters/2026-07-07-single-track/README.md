@@ -34,7 +34,7 @@ The loop and this repo are renamed **Ergane** (er-GAH-nee): *Athena Ergane*, "At
 - **It fits the ecosystem's naming pattern and its mythology.** The owner's components are Greek-mythology-named (Metis, Kleos, Nyx, Mneme, Moneta). In myth, Metis is Athena's mother — the Metis ecosystem giving rise to the working craftswoman is exactly the relationship this tool has to the monorepo it was born in.
 - **It is the only fully-clean candidate.** A clearance pass on 2026-07-07 (npm registry, GitHub search, web/trademark search) found: `ergane` free on npm both scoped and unscoped, `seevali/ergane` free, and only dead or unrelated web hits (a 2008 Esperanto dictionary freeware, a furniture boutique). Runners-up and rejections: `kyklos` (usable but the unscoped npm name is taken and the brand space is crowded), `automedon` (two live AI-orchestration companies use the exact name — confusion risk), `telos` (**blocker**: 1.4k-star danielmiessler/Telos + a NASDAQ-listed security company with registered software trademarks), `talos` (**blocker**: Talos Linux, Cisco Talos).
 
-npm package: **`@seevali/ergane`** (scoped — guaranteed available under the owner's account and consistent with the previously-planned `@seevali/ralph-loop`; this also resolves the installer chapter's open "Decision 5" on package naming). GitHub: **`seevali/ergane`** (GitHub redirects the old `ralph-loop-demo` URLs, so published links — including the 2026-06 blog post — keep working).
+npm package: **`@seevali/ergane`** (scoped — guaranteed available under the owner's account and consistent with the previously-planned `@seevali/ralph-loop`; this also resolves the installer chapter's open "Decision 5" on package naming). GitHub: **`seevali/ergane`** (GitHub redirects the old `ralph-loop-demo` URLs, so published links — including the 2026-05-25 blog post — keep working).
 
 ### D2 — Rename depth: brand-level now, engine-level deferred
 
@@ -83,7 +83,7 @@ README rewritten per the section-by-section verdict table in [`artifacts/recon-d
 
 ### D7 — Blog: banner + sequel, drafted here, published by the owner
 
-The 2026-06 post *"Watching the Loop Forge Itself"* on seevali.dev narrates the two-track era and stays untouched as a record (consistent with this repo's own "history over tidiness" rule). This chapter drafts, as artifacts only: a two-sentence banner for the old post and a sequel post draft ("the loop leaves the nest": single-track, Ergane, install-the-example). Publishing means pushing to the seevali.dev repo, which auto-deploys — that is the owner's action, not this chapter's. Audio companion tracks stay as-is (historical, like the post).
+The 2026-05-25 post *"Watching the Loop Forge Itself"* on seevali.dev narrates the two-track era and stays untouched as a record (consistent with this repo's own "history over tidiness" rule). This chapter drafts, as artifacts only: a two-sentence banner for the old post and a sequel post draft ("the loop leaves the nest": single-track, Ergane, install-the-example). Publishing means pushing to the seevali.dev repo, which auto-deploys — that is the owner's action, not this chapter's. Audio companion tracks stay as-is (historical, like the post).
 
 ### D8 — Parent monorepo: URL + names now, directory move later
 

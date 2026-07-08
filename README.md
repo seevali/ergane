@@ -1,130 +1,127 @@
-# Ralph Loop + BMAD Agents — Demo
+# Ergane
 
-> As discussed in [Hardening the Ralph Loop](https://seevali.dev/builds/hardening-the-ralph-loop/) on the blog — this is the live, runnable companion to the post.
+**An autonomous build loop: a GitHub issue or a PRD goes in, reviewed commits come out — one story at a time.**
 
-A self-contained demo showing the **Ralph Loop** pattern orchestrating **BMAD Method agents** to build a small React app — an **Exchange Rates monitoring dashboard** — story-by-story, autonomously, with one command.
+Ergane drives [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) agent roles — Scrum Master, Developer, Code Reviewer — through a spec, building software story by story without a human in the chat. Each step runs in a *fresh* Claude Code session, so the model never drowns in a 200-message history. The pattern is Geoff Huntley's ["Ralph"](https://ghuntley.com/loop/); Ergane is a hardened implementation with BMAD planning, multi-model cost routing, GitHub-issue intake, and a guided installer.
 
-The loop runs overnight (or for an hour, or until you stop it) and produces a working app driven by a PRD and an epics/stories plan.
+> **Name.** *Ergane* (er-GAH-nee) is the epithet of *Athena Ergane*, "Athena the Worker," patroness of craftspeople. It was born inside the [Metis](https://github.com/seevali) ecosystem — and in myth Metis is Athena's mother.
 
-## Quick Start
+This repository is two things at once: **the tool** (the loop, its prompts, its installer) and **the place the tool builds itself** — every improvement to Ergane is made by running Ergane on Ergane (see [How this repo evolves itself](#how-this-repo-evolves-itself)).
+
+---
+
+## What it is
+
+Ergane is a Bash orchestrator (`scripts/ralph-loop.sh`) that turns a spec into working, reviewed code. For each story it:
+
+1. **Scrum Master** (`bmad-create-story`) expands the story into a detailed, self-contained spec.
+2. **Developer** (`bmad-dev-story`) implements exactly that spec inside your app directory.
+3. **Checkpoint** — your build/test command runs to prove the code still works.
+4. **Code Reviewer** (`bmad-code-review`) checks acceptance criteria and the checkpoint; a **Fix** loop sends failures back to the Developer until review passes.
+5. The change is committed with a message referencing the story ID, and the loop moves to the next story.
+
+Two ideas do the heavy lifting:
+
+- **The Ralph pattern** — every step above is a **fresh Claude Code session** with no shared chat history. Context is reloaded from the file system (PRD, epic, story spec, code diff). Clean context per step is the whole point: the model stays sharp and prompt caching keeps the repeated context cheap. Named after [Geoff Huntley's "loop"](https://ghuntley.com/loop/).
+- **BMAD Method** — role-based agents (PM, Architect, Scrum Master, Developer, Code Reviewer) from [bmad-code-org/BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD). Each has a persona, a workflow, and a defined output shape. Ergane maps the loop's roles onto BMAD skills: SM = `bmad-create-story`, Dev = `bmad-dev-story`, Review = `bmad-code-review`.
+
+**Checkpoint discipline** is the safety contract: the loop only trusts code that passes the checkpoint command you give it, and every review step gates on that command. Flaky checkpoints confuse the reviewer — fix the flake, never weaken the command.
+
+### Two intake paths
+
+Ergane reads work from one of two sources:
+
+- **Path B — an epic file (`--epic`).** You already have a PRD and an epic broken into stories. The loop executes them. This is the direct path.
+- **Path A — a GitHub issue (`--issue N`).** A planning phase (**Phase 0**) turns the issue into a PRD (`docs/prd/issue-N.md`), an optional architecture note, and an epic (`docs/epics/issue-N.md`, stories namespaced `N.1`, `N.2`, …), then runs the Path B loop on it. Requires the [`gh`](https://cli.github.com/) CLI, authenticated. Add `--write` to project progress back onto the issue/PR; `--issues LIST|ready` to work a queue, one worktree + PR each.
+
+## Install
+
+The installer (a Node.js CLI in [`installer/`](installer/)) sets Ergane up inside any repo: it copies the loop scripts and prompts, renders a project-specific `GETTING-STARTED.md`, optionally installs BMAD, and writes a `docs/project-conventions.md` the loop injects into every agent.
+
+### Once published (aspirational)
+
+Ergane is **not yet on npm** (publishing is a pending manual step — see [`PUBLISHING.md`](PUBLISHING.md)). After the first publish, install will be:
+
+```bash
+# NOTE: not available until @seevali/ergane is published to npm.
+npx @seevali/ergane install
+```
+
+### Today: install from a clone
+
+Until then, clone this repo and run the installer directly:
+
+```bash
+git clone https://github.com/seevali/ergane.git
+cd ergane
+node installer/bin/ralph.js install --directory /path/to/your/project
+```
+
+**Want to watch it build something first?** Install the worked example — a complete, ready-to-run *Exchange Rates Dashboard* PRD + epic (six small React/Vite/TypeScript stories):
+
+```bash
+node installer/bin/ralph.js install --directory /path/to/scratch-dir --task-source example
+```
+
+That writes `docs/prd.md` + `docs/epics/exchange-rates-dashboard.md` (no TODOs to fill in) and prints the exact command to run the loop against them. This is the "install it and watch it build an app" experience — and because it travels through the real install path, it exercises exactly what a real user gets.
 
 ### Prerequisites
 
-- **Node.js 20+** (the installer runs via `npx`)
-- **`claude` CLI** ([install](https://github.com/anthropics/claude-code)) — the installer warns if missing, but your loop won't run without it.
-- **Git** (optional but recommended — the installer can initialize a repo)
-- **`jq`** (optional — the installer provides OS-specific install commands if it's missing)
-
-### Install in 5 minutes
-
-```bash
-npx <package> install
-```
-
-That's it. The installer asks about your project, scaffolds the loop, and walks you through customization. For non-interactive use (CI/scripts):
-
-```bash
-npx <package> install --yes
-```
-
-**Next:** The installer generates `GETTING-STARTED.md` with your project-specific next steps. Start reading there.
-
-### Why this approach?
-
-The Ralph Loop is powerful but requires careful setup: choosing a stack, writing the initial PRD and epic stubs, customizing system prompts, installing BMAD. The installer automates this, enforces best practices, and is designed to run on every update without losing your work. See the [repo layout](#repo-layout) and [how the loop works](#how-the-loop-works) sections below for what gets installed.
-
-## What is this?
-
-Two ideas, combined:
-
-- **The Ralph Loop** — a build pattern where each step of work (plan a story → implement it → review it → fix it) runs in a *fresh* Claude Code session. Clean context per step is the whole point: the model never gets confused by a 200-message history, and prompt caching makes the repeated context cheap.
-- **BMAD Method agents** — a set of role-based AI agents (Analyst, PM, Scrum Master, Dev, Code Reviewer) from [bmad-code-org/BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD). Each agent has a persona, a workflow, and a defined output shape.
-
-The demo wires them together. The Ralph script picks the next story, hands it to the SM agent to expand into a detailed spec, hands that to the Dev agent to implement, hands the diff to the Code Review agent, loops fixes back to Dev until review passes, commits, and moves on.
-
-## What gets built
-
-An Exchange Rates dashboard — a small React + Vite + TypeScript web app — defined by a PRD at `docs/` and broken into epics and stories the loop works through one at a time.
-
-The point isn't the app. The point is watching agents collaborate to build it.
-
-## Repo layout
-
-```
-.
-├── docs/         # PRD, epics, stories — the BMAD agents' working artifacts
-├── scripts/      # ralph-loop.sh — the orchestrator
-│   └── prompts/  # externalized system prompts (3-layer composition)
-├── src/          # the React app being built
-├── installer/    # guided installer CLI (Node.js package; System Track)
-├── _bmad/        # BMAD Method install (created during setup; self-contained)
-├── system/       # how the loop itself is improved — see "Two Tracks" below
-└── TIMELINE.md   # chronological log of how this repo has evolved
-```
-
-**System prompts & customization:** The loop composes system prompts from three layers: (1) execution-context overrides that ensure the loop runs non-interactively, (2) live-loaded BMAD persona files from `.claude/skills/`, and (3) stack-specific demo rules (React/TypeScript conventions, review standards). Files for layers 1 and 3 live in `scripts/prompts/` — if you fork this demo for a different stack, customize the prompts there rather than editing the loop script. See [`scripts/prompts/README.md`](scripts/prompts/README.md) for the full composition model and how to extend it.
+- **Platform:** macOS, Linux, or **WSL2 on Windows** — the loop is a Bash pipeline, so PowerShell/cmd won't work.
+- **Node.js 20+** (runs the installer).
+- **`claude` CLI** ([Claude Code](https://claude.com/claude-code)), authenticated with an Anthropic account that has API credit — the loop won't run without it.
+- **`git`**.
+- **`jq`** — JSON processor the loop uses to parse the `claude` CLI's cost output. The installer prints an OS-specific install command if it's missing.
+- **`gh`** ([GitHub CLI](https://cli.github.com/)), authenticated — only for Path A (`--issue`) intake.
 
 ## Running the loop
 
-These flags are the script's built-in defaults, so a bare `./scripts/ralph-loop.sh` does the same thing. Spelled out:
+Every run needs three flags — the loop bakes in **no defaults**, so a missing one stops immediately with a clear error (e.g. `Error: --epic is required`):
+
+- `--project-dir DIR` — the app directory the Developer writes code inside.
+- `--epic FILE` — the epic to execute (Path B). Path A derives this from `--issue` instead.
+- `--checkpoint CMD` — the build/test command every review step gates on.
+
+**Path B — execute an epic:**
 
 ```bash
-./scripts/ralph-loop.sh \
+bash scripts/ralph-loop.sh \
   --project-dir src \
   --prd docs/prd.md \
   --epic docs/epics/exchange-rates-dashboard.md \
-  --stories all \
   --checkpoint "cd src && npm run build && npm test --if-present"
 ```
 
-The script runs one story at a time: SM → Dev → Review → (Fix loop) → commit. Stop it anytime with `Ctrl-C`; resume by re-running with the same arguments.
+(That is the exact command the example install prints. Substitute your own `--project-dir`, `--epic`, and `--checkpoint`.) Stop anytime with `Ctrl-C`; resume by re-running with the same arguments.
 
-### Two execution paths
-
-The loop has two paths, selected by whether you pass `--issue`:
-
-- **Path B — execute (default).** Build from an epic that already exists — the
-  command above. This is what the demo runs.
-- **Path A — intake (`--issue N`).** Start from a single GitHub issue. A planning
-  phase (**Phase 0**) turns the issue into a PRD (`docs/prd/issue-N.md`), an
-  optional architecture note (`docs/architecture/issue-N.md`), and an epic
-  (`docs/epics/issue-N.md`, with stories namespaced `N.1`, `N.2`, …), then runs
-  the Path B loop on it. Requires the [`gh`](https://cli.github.com/) CLI,
-  authenticated.
+**Path A — plan and build from a GitHub issue:**
 
 ```bash
-# Path A — plan AND build from issue 42:
-./scripts/ralph-loop.sh --issue 42 --repo owner/name \
-  --checkpoint "cd src && npm run build && npm test --if-present"
+# Plan only — write the PRD/epic, stop before any code:
+bash scripts/ralph-loop.sh --issue 42 --plan-only --project-dir src --checkpoint "cd src && npm run build && npm test --if-present"
 
-# Path A — plan only, stop before any code (review the PRD/epic first):
-./scripts/ralph-loop.sh --issue 42 --plan-only
+# Plan AND build:
+bash scripts/ralph-loop.sh --issue 42 --project-dir src --checkpoint "cd src && npm run build && npm test --if-present"
 ```
 
-`--issue` and `--epic` are mutually exclusive (Path A derives the epic from the
-issue). Phase 0 is skipped on re-run if its epic already exists, so an
-interrupted intake resumes straight into the build. Planning models default to
-opus (PRD/architecture) and sonnet (story breakdown); override with `--model-pm`,
-`--model-architect`, `--model-planner`. The architecture step is gated by
-`--architecture auto|always|never` (default `auto`).
+`--issue` and `--epic` are mutually exclusive (Path A derives the epic from the issue). Phase 0 is skipped on re-run if its epic already exists, so an interrupted intake resumes straight into the build.
 
 ### Useful flags
 
 | Flag | Purpose |
 |------|---------|
 | `--stories 1,2,3` | Run a subset of stories instead of all |
+| `--budget-per-story-usd 10` | Cap spend per story |
 | `--max-budget-usd 5` | Hard cap per Claude invocation |
-| `--tag <name>` | Tag log files for this run |
 | `--issue N` | Path A: plan from GitHub issue N, then build |
 | `--repo OWNER/NAME` | Repo to read the issue from (default: `gh repo view`) |
 | `--plan-only` | Path A: run planning then stop (no code changes) |
-| `--triage auto\|always\|never` | Path A: score issue readiness before Phase 0 builds it (see [issue round-trip chapter](system/chapters/2026-06-25-github-issue-roundtrip/)) |
-| `--worktree` | Path A: isolate the issue run in its own git worktree (same chapter) |
-| `--issues LIST\|ready` | Work a queue of issues serially, one worktree + PR each; pair with `scripts/ralph-watch.sh` to watch/pause/abort jobs (same chapter) |
+| `--write` | Path A: project loop progress back to the issue/PR |
+| `--issues LIST\|ready` | Work a queue of issues serially, one worktree + PR each; pair with [`scripts/ralph-watch.sh`](scripts/ralph-watch.sh) to watch/pause/abort jobs |
 
-See `./scripts/ralph-loop.sh --help` for the full list.
+See `bash scripts/ralph-loop.sh --help` for the full list.
 
-## How the loop works
+### How the loop routes models
 
 ```
 ┌──────────┐    ┌──────────┐    ┌────────────┐    ┌──────────┐
@@ -138,13 +135,11 @@ See `./scripts/ralph-loop.sh --help` for the full list.
                                   └────────┘
 ```
 
-Each box is a **fresh Claude Code session** — no shared chat history. Context the next session needs is loaded from the file system (PRD, epic, story spec, code diff). That's the Ralph insight: scope the context tightly, run the model clean, repeat.
+Cheap model plans, mid-tier model writes, premium model reviews. Each box is a fresh session — no shared chat history.
 
-Multi-model routing keeps costs sane: cheap model plans, mid-tier model writes, premium model reviews.
+### Watching a run
 
-## Watching the run
-
-The script streams a live progress block to the terminal and writes a JSONL log per invocation to `scripts/logs/`. Open another terminal and `tail -f scripts/logs/<latest>.log` to watch the model's reasoning.
+The script streams a live progress block to the terminal and writes a JSONL log per invocation to `scripts/logs/`. Open another terminal and `tail -f scripts/logs/<latest>.log` to watch the model's reasoning. Path A queue runs (`--issues`) can be monitored with [`scripts/ralph-watch.sh`](scripts/ralph-watch.sh).
 
 ## Cost expectations
 
@@ -155,127 +150,31 @@ A small story (~50 lines of changed code) typically runs:
 - Review: ~$0.20
 - 0–2 fix passes: ~$0.10 each
 
-Plan for **$0.50–1.50 per story** as a rough order. The whole demo (a few epics worth of stories) lands in the low-to-mid double digits in dollars. Set `--max-budget-usd` on each invocation if you want a hard ceiling.
+Plan for **$0.50–1.50 per story** as a rough order. The six-story example lands in the low-to-mid single digits of dollars. Set `--budget-per-story-usd` or `--max-budget-usd` for a hard ceiling.
 
 ## Limitations
 
-- The loop assumes the checkpoint command (`npm test`, `npm run build`) reliably tells truth about whether code works. Flaky tests will confuse the review agent.
-- BMAD agents work best on greenfield React/TS code. Wiring them to a complex existing codebase needs custom system prompts.
-- Long-running loops can drift. Watch the early stories closely; if quality looks off, fix the PRD or epic before letting it churn for hours.
+- The loop assumes the checkpoint command reliably tells the truth about whether code works. Flaky tests confuse the review agent.
+- BMAD agents work best on greenfield or well-factored code. Wiring them into a large, tangled codebase needs a sharper `docs/project-conventions.md` and prompt customization.
+- Long-running loops can drift. Watch the early stories closely; if quality looks off, fix the PRD or epic — those are the input quality control — before letting it churn for hours.
 
-## Adapting this to your project
+## How this repo evolves itself
 
-The easiest path is to run `npx <package> install` in your target directory. The installer asks about your project, renders customized templates, and updates your system prompts. Re-run to update without touching your work.
+Ergane is developed **by running Ergane on Ergane.** Every improvement to the loop is a **chapter** under [`system/chapters/`](system/chapters/) — a dated folder with its own plan (`README.md`), PRD, epic, and stories. [`system/ralph-loop-system.sh`](system/ralph-loop-system.sh) points the canonical loop at a chapter; the loop then drives the work like any other project. Browse the chapters to see the tool forging itself in public — including the bugs each chapter exposed and fixed.
 
-If you're adapting the loop for a framework or environment not covered by the installer, or you need fine-grained control:
+- **[`system/`](system/)** — the lab notebook: chapters, the system-track wrapper, and design docs under [`system/design/`](system/design/).
+- **[`TIMELINE.md`](TIMELINE.md)** — a reverse-chronological narration of every meaningful change.
 
-1. [Follow the Quick Start](#quick-start) to get a baseline install.
-2. Edit the installer-generated files (described below) for your stack.
-3. Test with `./scripts/ralph-loop.sh --dry-run-prompts >/dev/null`.
+### A note on history
 
-### Files you'll customize
-
-#### 1. Replace the demo content
-
-The installer scaffolds these from your project answers. If you need to edit further:
-
-| What | Where | Notes |
-|---|---|---|
-| Your PRD | `docs/prd.md` | The installer generates a stub; refine with the BMAD PM agent (`@bmad-agent-pm`) or edit manually. |
-| Your epic + story **stubs** | `docs/epics/*.md` | The installer generates stubs from your project description. Just title + brief acceptance criteria per story — not full implementation specs. The loop's SM agent expands each stub into a detailed spec at run time (writes to `docs/stories/<id>.md`). Story headers MUST be `### Story X.Y: Title` — the loop's parser is strict on that line. |
-| Your app source | `src/` | Or override the path with `--project-dir <your-app-dir>`. |
-
-#### 2. Customize the prompts
-
-The loop's agent behavior is controlled by [`scripts/prompts/`](scripts/prompts/) — you don't need to edit `scripts/ralph-loop.sh` itself. The installer scaffolds these based on your answers; customize further if your framework wasn't fully covered. See [`scripts/prompts/README.md`](scripts/prompts/README.md) for the 3-layer composition model. The two files you'll usually edit:
-
-- **`scripts/prompts/common/project-conventions.md`** — The installer scaffolds this based on your stack answers. Customize it further if needed for frameworks the installer didn't cover.
-- **`scripts/prompts/review/overlay.md`** — review pass/block criteria. Currently tuned for `tsc`/Vite/Vitest; replace with what "code review passes" means in your codebase.
-
-#### 3. Set your checkpoint command
-
-The loop validates each story by running a **checkpoint command** after the Dev agent finishes. The demo uses `cd src && npm run build && npm test --if-present`. Set yours via `--checkpoint`:
-
-```bash
-./scripts/ralph-loop.sh --checkpoint "make test && make lint"
-```
-
-Whatever you choose must be **reliable** — flaky tests confuse the Review agent. Fix the flake; never weaken the command.
-
-#### 4. Update CLAUDE.md
-
-The [root `CLAUDE.md`](CLAUDE.md) is auto-loaded by every Claude Code session the loop spawns. The installer scaffolds it with stack rules based on your answers. Customize it further to replace the React/TS rules and guardrails with rules appropriate to your codebase.
-
-#### 5. Run
-
-```bash
-./scripts/ralph-loop.sh --stories all --budget-per-story-usd 10
-```
-
-Start with a small story budget cap. Watch the first story carefully. If the agent's output isn't what you wanted, the fix is usually **in the PRD or epic** — those are the input quality control. Sharpen them, then re-run.
-
-### How long does adoption take?
-
-Run `npx <package> install` and you'll have a working loop in under 5 minutes. For custom environments or stacks the installer doesn't cover, a focused adapter usually swaps stack + prompts + epic in about an hour. **PRD/epic quality is the #1 predictor of loop output quality.**
-
-## Two Tracks
-
-This repo has two parallel tracks. Both use the same Ralph Loop engine, but for different purposes:
-
-- **Demo Track** — everything at the repo root (`docs/`, `src/`, `scripts/ralph-loop.sh`). The **frozen showcase**: the Exchange Rates Dashboard you built by following Setup. Nothing here changes after first publication. **If you cloned this repo, this is the track you ran.**
-- **System Track** — under [`system/`](system/). **The maintainer's R&D lab for the Ralph Loop itself** — refactors of the orchestrator, new agent personas, prompt evolution, bug fixes. It's literally the loop used on itself. Each improvement is a **chapter** under [`system/chapters/`](system/chapters/) with its own plan, PRD, epic, and stories. Browse [chapter 1](system/chapters/2026-05-24-modularize-loop-prompts/) for a complete worked example, including the three infrastructure bugs that chapter exposed and fixed along the way (see the `fix(system)` commits in `git log`).
-
-**If you're forking this for your own project, you don't need the System Track.** It exists in the same repo as the Demo Track on purpose: it makes the recursion legible — anyone visiting the repo can watch the tool forge itself, story by story, in public.
+From **2026-05-24 to 2026-07-07** this repo was named `ralph-loop-demo` and ran on two tracks: a clonable "Demo Track" showcase (a React app skeleton under `src/` plus the Exchange Rates Dashboard PRD/epic at the root) and a "System Track" for loop-improvement work. On **2026-07-07** the demo was retired: it had never actually been run, and the same "watch it build an app" experience is now delivered better through the installer's `--task-source example` (above), because it travels the real install path. The repo was renamed **Ergane** and is now single-track — the tool and its self-development in one place. The full rationale lives in the [single-track chapter](system/chapters/2026-07-07-single-track/README.md); the two-track era itself is narrated in the blog post [*Watching the Loop Forge Itself*](https://seevali.dev/builds/watching-the-loop-forge-itself/) (2026-05-25), which stands as a record of that period. Historical `TIMELINE.md` entries keep their `[Demo]`/`[System]` tags for the same reason.
 
 ## Credits
 
-- **Ralph Loop pattern** — the original idea, from [Geoff Huntley's "loop" post](https://ghuntley.com/loop/). Drive coding agents through fresh-context iteration cycles instead of one long conversation — every "Ralph" loop in the wild, including this one, traces back to that post.
-- **This repo's loop implementation** — adapted from [Seevali Rathnayake](https://seevali.dev)'s production scripts (`ralph-affiant-v2.sh`, `ralph-gantry-v2.sh`).
+- **Ralph pattern** — [Geoff Huntley's "loop" post](https://ghuntley.com/loop/). Drive coding agents through fresh-context iteration cycles instead of one long conversation.
+- **This loop's implementation** — adapted from [Seevali Rathnayake](https://seevali.dev)'s production Ralph scripts.
 - **BMAD Method** — by [bmad-code-org](https://github.com/bmad-code-org/BMAD-METHOD).
 - **Claude Code** — by [Anthropic](https://claude.com/claude-code).
-
-## Manual Install (Fallback)
-
-The recommended approach is the [Quick Start](#quick-start) above. This section documents the manual installation process for those who need per-step control or are adapting the loop to a non-standard environment.
-
-### Prerequisites
-
-- **Platform:** macOS, Linux, or **WSL2 on Windows** — the loop is a bash pipeline, so PowerShell/cmd won't work. If you're on Windows, install WSL2 and an Ubuntu (or similar) distro, then run everything below from inside WSL.
-- Node.js 20+
-- [Claude Code CLI](https://claude.com/claude-code) authenticated with an Anthropic account that has API credits
-- `git`
-- `jq` — JSON processor used to parse the `claude` CLI's output for cost tracking and session handling. Install with:
-  - macOS: `brew install jq`
-  - Debian/Ubuntu/WSL: `sudo apt-get install -y jq`
-  - Other: see [jqlang.org/download](https://jqlang.org/download/)
-- A few hours of patience (and budget — the loop costs real money per iteration)
-
-### Setup
-
-```bash
-# 1. Install dependencies for the app
-cd src && npm install && cd ..
-
-# 2. Install BMAD Method (core + bmm modules only).
-#    Interactive: `npx bmad-method install` then choose core + bmm,
-#    tool "claude-code", output folder ./docs. Or non-interactively:
-npx bmad-method install \
-  --directory . --modules core,bmm --tools claude-code \
-  --output-folder docs \
-  --set bmm.planning_artifacts=docs --set bmm.implementation_artifacts=docs/stories \
-  --yes
-# This creates _bmad/ and .claude/skills/ (both gitignored — they are
-# install products, regenerated by this command). The PRD and epic are
-# already committed at docs/prd.md and docs/epics/exchange-rates-dashboard.md,
-# so you do NOT need to regenerate them — just run the loop.
-
-# 3. Verify the loop script is executable
-chmod +x scripts/ralph-loop.sh
-```
-
-> Installs the latest BMAD (v6.7+). Its agent skills are `bmad-create-story`
-> (Scrum Master), `bmad-dev-story` (Developer), and `bmad-code-review`
-> (Reviewer) — there is no `bmad-agent-sm` in v6.7+.
 
 ## License
 

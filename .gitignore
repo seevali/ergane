@@ -1,12 +1,9 @@
 # Dependencies
 node_modules/
-src/node_modules/
 
 # Build output
 dist/
 build/
-src/dist/
-src/build/
 
 # BMAD install — users install this themselves via `npx bmad-method install`.
 # This regenerates both _bmad/ (module source) and .claude/skills/ (agent

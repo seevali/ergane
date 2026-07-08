@@ -8,8 +8,8 @@ set -euo pipefail
 # chapter folder under system/chapters/, locates its PRD and epic,
 # and delegates to the canonical loop with system-appropriate defaults.
 #
-# Cloners running the demo don't need this script — they want
-# scripts/ralph-loop.sh at the repo root.
+# Users running Ergane against their own project don't need this script —
+# they want scripts/ralph-loop.sh directly. This wrapper is for chapters.
 #
 # Usage:
 #   ./system/ralph-loop-system.sh                              # latest chapter
@@ -142,14 +142,14 @@ echo "→ Loop:     scripts/ralph-loop.sh --project-dir ."
 echo
 
 # Override the loop's default STORIES_DIR so SM-generated story specs land
-# in the chapter's stories/ folder, not in docs/stories/ (which belongs to
-# the Demo Track). The loop reads STORIES_DIR via env var since the
+# in the chapter's stories/ folder, not in the loop's default docs/stories/.
+# The loop reads STORIES_DIR via env var since the
 # fix(system): unblock first chapter run commit.
 export STORIES_DIR="$REPO_ROOT/$STORIES_REL"
 
-# Tell the loop's auto-commit step which extra paths to stage for System
-# Track stories. The loop's default staging list covers Demo Track work
-# (src/, docs/stories/); System Track work touches the loop script, the
+# Tell the loop's auto-commit step which extra paths to stage for chapter
+# stories. The loop's default staging list covers the target project's
+# app dir + stories dir; chapter work touches the loop script, the
 # wrapper, root docs, and the chapter's own folder. Without these the
 # feat(X.Y): commits land empty of code — see fix(1.2,1.3) for the
 # precedent that motivated this env var.
