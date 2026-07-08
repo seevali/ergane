@@ -1,7 +1,7 @@
 # Project PRD
 
 <!-- TEACHING COMMENT: This is your project PRD (Product Requirements Document). -->
-<!-- The Ralph Loop's Scrum Master (SM) agent reads this file to write story specs. -->
+<!-- Ergane's Scrum Master (SM) agent reads this file to write story specs. -->
 <!-- Replace the placeholder sections below with your project's specifics. -->
 <!-- Keep Acceptance Criteria observable from outside the code — "renders X", "calls endpoint Z". -->
 

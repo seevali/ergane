@@ -1,4 +1,4 @@
-> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/blob/main/system/design/issue-native-bmad-loop.md)** · design §4. The design doc is the source of truth.
+> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ergane/blob/main/system/design/issue-native-bmad-loop.md)** · design §4. The design doc is the source of truth.
 
 ## Context (cold-start)
 
@@ -29,11 +29,11 @@ There is no defined workflow today. Without an authoritative label machine, ther
 
 ## Dependencies
 
-- **Relates to / supersedes the narrower** verdict-gated labels in Slice A [#1 Round Trip](https://github.com/seevali/ralph-loop-demo/issues/1) and the gate in [#2 Triage Before Toil](https://github.com/seevali/ralph-loop-demo/issues/2) — this is the authoritative, complete workflow those partially touch.
-- **Blocked by:** Slice A [#1](https://github.com/seevali/ralph-loop-demo/issues/1) write helpers (label ops).
+- **Relates to / supersedes the narrower** verdict-gated labels in Slice A [#1 Round Trip](https://github.com/seevali/ergane/issues/1) and the gate in [#2 Triage Before Toil](https://github.com/seevali/ergane/issues/2) — this is the authoritative, complete workflow those partially touch.
+- **Blocked by:** Slice A [#1](https://github.com/seevali/ergane/issues/1) write helpers (label ops).
 
 ## Out of scope
 
-Scheduler implementation ([#5 Swarm](https://github.com/seevali/ralph-loop-demo/issues/5)); the readiness *scoring* itself ([#2 Triage](https://github.com/seevali/ralph-loop-demo/issues/2)) — this component defines the labels/contract it sets.
+Scheduler implementation ([#5 Swarm](https://github.com/seevali/ergane/issues/5)); the readiness *scoring* itself ([#2 Triage](https://github.com/seevali/ergane/issues/2)) — this component defines the labels/contract it sets.
 
 Glossary: design §12.

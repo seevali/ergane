@@ -1,5 +1,5 @@
 /**
- * E2E test suite for the Ralph Loop installer.
+ * E2E test suite for the Ergane installer.
  *
  * Validates the complete install → doctor → update → uninstall cycle through
  * the CLI binary using non-interactive mode (--yes). Each test maps directly
@@ -32,7 +32,7 @@ const SYNC_SCRIPT = path.join(INSTALLER_ROOT, 'scripts', 'sync-templates.sh');
 const TEMPLATE_LOOP_SCRIPT = path.join(INSTALLER_ROOT, 'templates', 'loop', 'ralph-loop.sh');
 const TEMPLATE_WATCH_SCRIPT = path.join(INSTALLER_ROOT, 'templates', 'loop', 'ralph-watch.sh');
 
-describe('E2E: Ralph Loop Installer', () => {
+describe('E2E: Ergane Installer', () => {
 
   // ── PRD criterion 1: empty-dir install verified end-to-end by doctor ──────────
 

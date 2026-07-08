@@ -1,4 +1,4 @@
-# Getting Started with Your Ralph Loop
+# Getting Started with Your Ergane Loop
 
 This guide gets you from a fresh install to your first autonomous build, then shows the two ways to feed the loop work: **from an epic file** (the quick-start path) and **from GitHub issues** (the issue-driven path).
 
@@ -168,7 +168,7 @@ Deeper agent behavior lives in `scripts/prompts/`. Edit those overlays to tailor
 
 ---
 
-## Updating your Ralph Loop
+## Updating your Ergane Loop
 
 ```bash
 {{CLI_INVOCATION}} update
@@ -201,7 +201,7 @@ Common issues:
 ## Deeper documentation
 
 - **Loop architecture:** the repo's own `README.md`.
-- **The GitHub-issue workflow in depth:** [issue-roundtrip chapter](https://github.com/seevali/ralph-loop-demo/tree/main/system/chapters/2026-06-25-github-issue-roundtrip).
+- **The GitHub-issue workflow in depth:** [issue-roundtrip chapter](https://github.com/seevali/ergane/tree/main/system/chapters/2026-06-25-github-issue-roundtrip).
 - **Prompt customization:** edit the overlays in `scripts/prompts/`.
 
 ---

@@ -6,10 +6,10 @@
 # from files (files are source of truth); the umbrella's child lists regenerate.
 #
 # Requires: `gh` authenticated with WRITE scope on the repo.
-# Usage:   ./create-design-issues.sh [OWNER/NAME]   (default: seevali/ralph-loop-demo)
+# Usage:   ./create-design-issues.sh [OWNER/NAME]   (default: seevali/ergane)
 set -euo pipefail
 
-REPO="${1:-seevali/ralph-loop-demo}"
+REPO="${1:-seevali/ergane}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> Target repo: $REPO"

@@ -1,4 +1,4 @@
-> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/blob/main/system/design/issue-native-bmad-loop.md)** · design §6. The design doc is the source of truth.
+> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ergane/blob/main/system/design/issue-native-bmad-loop.md)** · design §6. The design doc is the source of truth.
 
 ## Context (cold-start)
 
@@ -24,11 +24,11 @@ The Ralph Loop today never creates sub-issues, and `gh`'s REST surface has no na
 
 ## Dependencies
 
-- **Blocked by:** the manifest/reconciler component (identity markers + state) and Slice A [#1 Round Trip](https://github.com/seevali/ralph-loop-demo/issues/1) (`gh_*_op` write helpers).
+- **Blocked by:** the manifest/reconciler component (identity markers + state) and Slice A [#1 Round Trip](https://github.com/seevali/ergane/issues/1) (`gh_*_op` write helpers).
 - **Blocks:** big-issue intake binding, re-sizing.
 
 ## Out of scope
 
-The PRD/epic/story file generation (intake binding component); per-sub-issue PR review experience ([#3 Confessing PR](https://github.com/seevali/ralph-loop-demo/issues/3)); the label lifecycle (label-workflow component).
+The PRD/epic/story file generation (intake binding component); per-sub-issue PR review experience ([#3 Confessing PR](https://github.com/seevali/ergane/issues/3)); the label lifecycle (label-workflow component).
 
 Glossary: design §12.

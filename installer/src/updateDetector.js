@@ -17,7 +17,7 @@ async function readInstallerVersion() {
 }
 
 /**
- * Detect whether a target directory has an existing Ralph Loop install and compute the
+ * Detect whether a target directory has an existing Ergane install and compute the
  * update delta: which files are installer-owned vs user-owned, which have been locally
  * modified since the last install, and which are missing from disk.
  *

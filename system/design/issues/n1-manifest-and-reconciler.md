@@ -1,4 +1,4 @@
-> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/blob/main/system/design/issue-native-bmad-loop.md)** · design §5 (manifest) + §8 (typed runtime). The design doc is the source of truth.
+> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ergane/blob/main/system/design/issue-native-bmad-loop.md)** · design §5 (manifest) + §8 (typed runtime). The design doc is the source of truth.
 
 ## Context (cold-start)
 
@@ -26,7 +26,7 @@ GitHub assigns sub-issue numbers; story IDs are ours. Without a persisted, crash
 
 ## Dependencies
 
-- **Blocked by:** the `tools/` Node exception (done — CLAUDE.md amended) and Slice A [#1 Round Trip](https://github.com/seevali/ralph-loop-demo/issues/1) write primitives.
+- **Blocked by:** the `tools/` Node exception (done — CLAUDE.md amended) and Slice A [#1 Round Trip](https://github.com/seevali/ergane/issues/1) write primitives.
 - **Blocks:** native sub-issue creation, big-issue intake, re-sizing.
 
 ## Out of scope

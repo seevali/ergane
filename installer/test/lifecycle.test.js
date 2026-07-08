@@ -52,7 +52,7 @@ test('L5: install into a project with a .gitignore succeeds without --force and 
 
     const gitignore = await fs.readFile(path.join(dir, '.gitignore'), 'utf8');
     assert.ok(gitignore.includes('node_modules/'), 'user entries preserved');
-    assert.ok(gitignore.includes('# Ralph Loop'), 'ralph section appended');
+    assert.ok(gitignore.includes('# Ergane'), 'ergane section appended');
   } finally {
     await cleanup();
   }
@@ -71,7 +71,7 @@ test('L11a: nested install under an existing install is refused with --yes (no -
 
     const nested = runCli(['install', '-d', sub, '--yes', '--use-bmad', 'no']);
     assert.notEqual(nested.exitCode, 0, 'nested install must refuse non-interactively');
-    assert.ok(/nested|existing Ralph Loop install/i.test(nested.stdout + nested.stderr));
+    assert.ok(/nested|existing Ergane install/i.test(nested.stdout + nested.stderr));
 
     // --force lets it through.
     const forced = runCli(['install', '-d', sub, '--yes', '--force', '--use-bmad', 'no']);

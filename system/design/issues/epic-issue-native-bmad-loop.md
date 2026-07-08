@@ -1,4 +1,4 @@
-> **Umbrella EPIC** for [The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/blob/main/system/design/issue-native-bmad-loop.md) — the architecture unifying GitHub Issues + BMAD (PRD→epic→story) + the Ralph Loop. This issue mirrors that design doc, which is the **source of truth**; this issue is the tracker view.
+> **Umbrella EPIC** for [The Issue-Native BMAD Loop](https://github.com/seevali/ergane/blob/main/system/design/issue-native-bmad-loop.md) — the architecture unifying GitHub Issues + BMAD (PRD→epic→story) + the Ralph Loop. This issue mirrors that design doc, which is the **source of truth**; this issue is the tracker view.
 
 ## What this is
 

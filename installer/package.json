@@ -1,7 +1,7 @@
 {
-  "name": "@seevali/ralph-loop",
+  "name": "@seevali/ergane",
   "version": "0.2.0",
-  "description": "Interactive wizard to install and manage the Ralph Loop—an agentic workflow for software projects",
+  "description": "Interactive wizard to install and manage the Ergane build loop—an agentic workflow for software projects",
   "type": "module",
   "keywords": [
     "ralph-loop",
@@ -15,12 +15,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/seevali/ralph-loop-demo.git",
+    "url": "https://github.com/seevali/ergane.git",
     "directory": "installer"
   },
-  "homepage": "https://github.com/seevali/ralph-loop-demo#readme",
+  "homepage": "https://github.com/seevali/ergane#readme",
   "bugs": {
-    "url": "https://github.com/seevali/ralph-loop-demo/issues"
+    "url": "https://github.com/seevali/ergane/issues"
   },
   "funding": {
     "url": "https://github.com/sponsors/seevali"

@@ -17,7 +17,7 @@ async function checkManifest(dirPath) {
 
 /**
  * Walk up from a target directory (excluding the target itself) looking for an
- * ancestor that already contains a Ralph Loop install (`.ralph/manifest.json`).
+ * ancestor that already contains an Ergane install (`.ralph/manifest.json`).
  * Used to warn before creating a second, independent nested install.
  *
  * @param {string} dirPath - the target directory

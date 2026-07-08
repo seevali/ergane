@@ -26,9 +26,9 @@ export function printOutro(result, plan, log = console.log) {
 
   log('\n═══════════════════════════════════════════════════════════════════');
   if (bmadFailed) {
-    log('✓ Ralph Loop installed, with 1 step needing attention (BMAD).');
+    log('✓ Ergane installed, with 1 step needing attention (BMAD).');
   } else {
-    log('✓ Ralph Loop installed successfully!');
+    log('✓ Ergane installed successfully!');
   }
   log('═══════════════════════════════════════════════════════════════════\n');
 
@@ -56,7 +56,7 @@ export function printOutro(result, plan, log = console.log) {
   }
   const runCommand = `bash scripts/ralph-loop.sh ${runFlags.join(' ')}`;
 
-  log(`Your Ralph Loop lives in ${projectPath}. cd there, then follow these steps:\n`);
+  log(`Your Ergane loop lives in ${projectPath}. cd there, then follow these steps:\n`);
   log('📋 Next steps:\n');
 
   log(`1. Read the guide:              cat GETTING-STARTED.md`);

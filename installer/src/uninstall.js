@@ -132,8 +132,8 @@ export async function removeEmptyDir(dirPath) {
 }
 
 /**
- * Remove the Ralph Loop section from a .gitignore file.
- * The section starts at the `# Ralph Loop` line and continues until a blank
+ * Remove the Ergane section from a .gitignore file.
+ * The section starts at the `# Ergane` line and continues until a blank
  * line or another comment header (or EOF). If the file becomes empty after
  * removal it is deleted; if the file doesn't exist this is a no-op.
  */
@@ -151,7 +151,7 @@ export async function cleanGitignore(gitignorePath) {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed === '# Ralph Loop') {
+    if (trimmed === '# Ergane') {
       inRalphSection = true;
       continue;
     }
@@ -163,7 +163,7 @@ export async function cleanGitignore(gitignorePath) {
           result.push(line);
         }
       }
-      // else: skip this Ralph Loop entry
+      // else: skip this Ergane entry
     } else {
       result.push(line);
     }
@@ -182,14 +182,14 @@ export async function cleanGitignore(gitignorePath) {
 }
 
 /**
- * Uninstall a Ralph Loop installation from the target directory.
+ * Uninstall an Ergane installation from the target directory.
  *
  * Five-phase flow:
  *   1. Load and validate .ralph/manifest.json
  *   2. Categorize files by ownership class
  *   3. Remove installer-owned files (except .gitignore)
  *   4. Handle user-owned files per --yes / --force / interactive prompt
- *   3b. Clean .gitignore (remove Ralph Loop section only)
+ *   3b. Clean .gitignore (remove Ergane section only)
  *   5. Remove .ralph/manifest.json and .ralph/ directory (if empty)
  *
  * @param {object} options
@@ -332,7 +332,7 @@ export async function uninstall(options, opts = {}) {
     const gitignorePath = path.join(targetDir, '.gitignore');
     try {
       await cleanGitignore(gitignorePath);
-      log(`${ok} Cleaned .gitignore (removed Ralph Loop section)`);
+      log(`${ok} Cleaned .gitignore (removed Ergane section)`);
       removedCount++;
     } catch (err) {
       errLog(`${fail} Could not clean .gitignore: ${err.message}`);

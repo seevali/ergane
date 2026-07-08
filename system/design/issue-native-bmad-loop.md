@@ -231,21 +231,21 @@ The typed module must satisfy the project's testing mandate: deterministic, agen
 
 ## 11. Traceability & roadmap
 
-All work is tracked under the umbrella epic **[#12 The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/issues/12)**. The `2026-06-25-github-issue-roundtrip` chapter's five issues (**Slice A**) are *partial implementations*; the design-level component issues (**Slice B**, #7–#11) complete the machinery. Issue body files: round-trip slice in the chapter's `issues/`; Slice B in `system/design/issues/`.
+All work is tracked under the umbrella epic **[#12 The Issue-Native BMAD Loop](https://github.com/seevali/ergane/issues/12)**. The `2026-06-25-github-issue-roundtrip` chapter's five issues (**Slice A**) are *partial implementations*; the design-level component issues (**Slice B**, #7–#11) complete the machinery. Issue body files: round-trip slice in the chapter's `issues/`; Slice B in `system/design/issues/`.
 
 | Design component (§) | GitHub issue |
 |---|---|
-| **Umbrella — the whole design** | [#12 EPIC: The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/issues/12) |
-| Write-back projection: branch → PR → comment → labels (§4, §6) | *partial* — [#1 Round Trip](https://github.com/seevali/ralph-loop-demo/issues/1) |
-| Maintainer review gate / triage scoring (§4) | *partial* — [#2 Triage Before Toil](https://github.com/seevali/ralph-loop-demo/issues/2) |
-| Per-sub-issue PR experience (§6) | *partial* — [#3 Confessing PR](https://github.com/seevali/ralph-loop-demo/issues/3) |
-| Isolation for per-sub-issue / parallel builds (§6, §9) | *partial* — [#4 Worktree-per-Issue](https://github.com/seevali/ralph-loop-demo/issues/4) |
-| Scheduler that *continues gated work* (§9) | *partial* — [#5 Swarm + Mission Control](https://github.com/seevali/ralph-loop-demo/issues/5) |
-| Label state machine + `loop:ready` contract (§4) — authoritative; supersedes #1's narrower verdict-gated labels | [#7](https://github.com/seevali/ralph-loop-demo/issues/7) |
-| Manifest + identity markers + typed `reconcile.ts` (§5, §8) | [#8](https://github.com/seevali/ralph-loop-demo/issues/8) |
-| Native sub-issue creation + source-issue-as-epic body (§6) | [#9](https://github.com/seevali/ralph-loop-demo/issues/9) |
-| Big-issue intake binding: issue → PRD/epic/stories + sub-issues, track-routed (§10) | [#10](https://github.com/seevali/ralph-loop-demo/issues/10) |
-| Re-sizing / correct-course (§7) | [#11](https://github.com/seevali/ralph-loop-demo/issues/11) |
+| **Umbrella — the whole design** | [#12 EPIC: The Issue-Native BMAD Loop](https://github.com/seevali/ergane/issues/12) |
+| Write-back projection: branch → PR → comment → labels (§4, §6) | *partial* — [#1 Round Trip](https://github.com/seevali/ergane/issues/1) |
+| Maintainer review gate / triage scoring (§4) | *partial* — [#2 Triage Before Toil](https://github.com/seevali/ergane/issues/2) |
+| Per-sub-issue PR experience (§6) | *partial* — [#3 Confessing PR](https://github.com/seevali/ergane/issues/3) |
+| Isolation for per-sub-issue / parallel builds (§6, §9) | *partial* — [#4 Worktree-per-Issue](https://github.com/seevali/ergane/issues/4) |
+| Scheduler that *continues gated work* (§9) | *partial* — [#5 Swarm + Mission Control](https://github.com/seevali/ergane/issues/5) |
+| Label state machine + `loop:ready` contract (§4) — authoritative; supersedes #1's narrower verdict-gated labels | [#7](https://github.com/seevali/ergane/issues/7) |
+| Manifest + identity markers + typed `reconcile.ts` (§5, §8) | [#8](https://github.com/seevali/ergane/issues/8) |
+| Native sub-issue creation + source-issue-as-epic body (§6) | [#9](https://github.com/seevali/ergane/issues/9) |
+| Big-issue intake binding: issue → PRD/epic/stories + sub-issues, track-routed (§10) | [#10](https://github.com/seevali/ergane/issues/10) |
+| Re-sizing / correct-course (§7) | [#11](https://github.com/seevali/ergane/issues/11) |
 
 ---
 
@@ -268,7 +268,7 @@ All work is tracked under the umbrella epic **[#12 The Issue-Native BMAD Loop](h
 ## 13. Context dossier
 
 - **Originating motivation:** On 2026-06-25, after filing five roadmap issues for write-back features, the owner (Seevali) recognized a deeper need: a *unified* system where GitHub Issues, BMAD, and the Ralph Loop harmonize so a maintainer (owner or community-served) moves products forward without friction. He asked the team to reconcile "two worlds" (BMAD's PRD→epic→story vs GitHub issues as tracker).
-- **Who is acting:** Seevali — owner/maintainer of `seevali/ralph-loop-demo` (a public repo; the System Track is his real Ralph-loop product, despite living under a `demos/` folder — relocating it is a flagged future cleanup). He may switch LLM providers, hence the cold-start discipline.
+- **Who is acting:** Seevali — owner/maintainer of `seevali/ergane` (a public repo; the System Track is his real Ralph-loop product, despite living under a `demos/` folder — relocating it is a flagged future cleanup). He may switch LLM providers, hence the cold-start discipline.
 - **Current project state (2026-06-25):** Path A read-only intake is built but never run end-to-end live. The round-trip chapter (write-back) is planned with five issues filed (#1–#6). This design is accepted but unimplemented.
 - **Decisions taken (with why):**
   - *Epic = source issue, Story = sub-issue* — maps BMAD's hierarchy onto GitHub's native sub-issues; small work collapses to issue=unit.

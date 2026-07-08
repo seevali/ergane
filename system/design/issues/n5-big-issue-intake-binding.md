@@ -1,4 +1,4 @@
-> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/blob/main/system/design/issue-native-bmad-loop.md)** · design §10 (extends Path A). The design doc is the source of truth.
+> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ergane/blob/main/system/design/issue-native-bmad-loop.md)** · design §10 (extends Path A). The design doc is the source of truth.
 
 ## Context (cold-start)
 
@@ -32,6 +32,6 @@ Today there is no path from "a `loop:ready` big issue" to "PRD + epic + story fi
 
 ## Out of scope
 
-Re-sizing (separate component); the maintainer review/scoring that sets `loop:ready` ([#2 Triage](https://github.com/seevali/ralph-loop-demo/issues/2)); the build cycle itself (existing SM→Dev→Review).
+Re-sizing (separate component); the maintainer review/scoring that sets `loop:ready` ([#2 Triage](https://github.com/seevali/ergane/issues/2)); the build cycle itself (existing SM→Dev→Review).
 
 Glossary: design §12.

@@ -79,7 +79,7 @@ export async function preflight(opts = {}) {
       : {
           status: 'fail',
           message: [
-            'bash not found. The Ralph Loop requires a bash environment.',
+            'bash not found. Ergane requires a bash environment.',
             'On Windows, install WSL2: https://docs.microsoft.com/windows/wsl/install',
             'Alternatively, install Git Bash: https://git-scm.com/download/win',
           ].join('\n'),

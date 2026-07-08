@@ -196,12 +196,12 @@ export async function runWizard(targetDir, classification, preflightResults, opt
 
   try {
     // ── Step 2: Intro ──────────────────────────────────────────────────────────
-    p.intro(pc.bold('Ralph Loop Guided Installer'));
+    p.intro(pc.bold('Ergane Guided Installer'));
 
     const explainerConfirmed = checkCancel(
       await p.confirm({
         message:
-          'Welcome! This wizard will set up the Ralph Loop — an agent-driven development loop\n' +
+          'Welcome! This wizard will set up Ergane — an agent-driven development loop\n' +
           'running Claude Code to build your app story by story.\n\n' +
           "We'll collect information about your project and the loop configuration.\n" +
           'Press Enter to accept any default, or Ctrl-C to cancel (zero changes made).\n\n' +
@@ -214,10 +214,10 @@ export async function runWizard(targetDir, classification, preflightResults, opt
     // ── Step 3: Target directory confirmation ─────────────────────────────────
     const targetMessage =
       classification === 'empty'
-        ? "This directory is empty. I'll set up the Ralph Loop here."
+        ? "This directory is empty. I'll set up Ergane here."
         : classification === 'existing-project'
-          ? "This is an existing project. I'll add Ralph Loop files without touching your code."
-          : "This directory already has a Ralph Loop install. I'll update it.";
+          ? "This is an existing project. I'll add Ergane files without touching your code."
+          : "This directory already has an Ergane install. I'll update it.";
 
     const targetConfirmed = checkCancel(
       await p.confirm({

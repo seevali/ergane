@@ -1,6 +1,6 @@
 # Project Conventions
 
-<!-- This file is managed by the Ralph Loop installer. -->
+<!-- This file is managed by the Ergane installer. -->
 <!-- It is referenced by loop agents as the authoritative description of your stack rules. -->
 <!-- Edit the sections below to reflect your actual project conventions. -->
 <!-- The installer may update this file when loop knobs change (checkpoint, model, etc.). -->

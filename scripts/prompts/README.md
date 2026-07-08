@@ -1,6 +1,6 @@
-# scripts/prompts — Ralph Loop Prompt Files
+# scripts/prompts — Ergane Prompt Files
 
-This directory holds the repo-local prompt text that the Ralph Loop assembles into cached system prompts for each agent role (SM, Dev, Review). It was introduced by the `2026-05-24-modularize-loop-prompts` chapter to replace ~110 lines of hardcoded heredocs in `scripts/ralph-loop.sh`.
+This directory holds the repo-local prompt text that Ergane assembles into cached system prompts for each agent role (SM, Dev, Review). It was introduced by the `2026-05-24-modularize-loop-prompts` chapter to replace ~110 lines of hardcoded heredocs in `scripts/ralph-loop.sh`.
 
 ---
 

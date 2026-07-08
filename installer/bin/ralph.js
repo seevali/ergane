@@ -41,12 +41,12 @@ const { version } = JSON.parse(readFileSync(packagePath, 'utf8'));
 program
   .version(version, '-v, --version', 'Show version number and exit')
   .helpOption('-h, --help', 'Show help and exit')
-  .description('Ralph Loop guided installer — set up a new loop project in minutes');
+  .description('Ergane guided installer — set up a new loop project in minutes');
 
 program
   .command('install')
   .alias('init')
-  .description('Install or update a Ralph Loop project')
+  .description('Install or update an Ergane project')
   .option('-d, --directory <path>', 'Target directory (default: current directory)')
   .option('-y, --yes', 'Non-interactive mode: skip prompts and use defaults')
   .option('-f, --force', 'Force-overwrite installer-owned files even if locally modified')
@@ -195,12 +195,12 @@ program
       return;
     }
 
-    // Nested-install guard: warn when an ancestor directory already has a Ralph Loop
+    // Nested-install guard: warn when an ancestor directory already has an Ergane
     // install. Proceed only with explicit confirmation (or --force in --yes mode) so a
     // second, independent nested install isn't created silently.
     const ancestorInstall = await findAncestorInstall(targetDir);
     if (ancestorInstall) {
-      console.log(`\n⚠ An existing Ralph Loop install was found above this directory:\n  ${ancestorInstall}`);
+      console.log(`\n⚠ An existing Ergane install was found above this directory:\n  ${ancestorInstall}`);
       if (options.yes) {
         if (!options.force) {
           console.error('Refusing to create a nested install non-interactively. Re-run with --force to proceed anyway.');
@@ -256,7 +256,7 @@ program
 
 program
   .command('update')
-  .description('Update an existing Ralph Loop installation')
+  .description('Update an existing Ergane installation')
   .option('-d, --directory <path>', 'Target directory (default: current directory)')
   .option('-y, --yes', 'Non-interactive mode: skip prompts and use defaults')
   .option('-f, --force', 'Force update without prompting')
@@ -280,7 +280,7 @@ program
     }
 
     if (classifyResult.type !== 'existing-install') {
-      console.error('No existing Ralph Loop installation found in this directory. Run install first.');
+      console.error('No existing Ergane installation found in this directory. Run install first.');
       process.exit(1);
       return;
     }
@@ -357,7 +357,7 @@ program
 
 program
   .command('uninstall')
-  .description('Remove a Ralph Loop installation')
+  .description('Remove an Ergane installation')
   .option('-d, --directory <path>', 'Target directory (default: current directory)')
   .option('-y, --yes', 'Preserve user-owned files without prompting')
   .option('-f, --force', 'Remove all files without prompting')
@@ -383,7 +383,7 @@ program
 
 program
   .command('doctor')
-  .description('Validate an existing Ralph Loop installation')
+  .description('Validate an existing Ergane installation')
   .option('-d, --directory <path>', 'Target directory (default: current directory)')
   .action(async (options) => {
     const targetDir = resolve(options.directory ?? '.');

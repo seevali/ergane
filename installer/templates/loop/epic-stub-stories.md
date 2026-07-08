@@ -1,7 +1,7 @@
 # Project Epic: <!-- Replace with your epic title -->
 
 <!-- TEACHING COMMENT: This file defines your project's stories. -->
-<!-- The Ralph Loop's SM agent reads it to produce individual story spec files. -->
+<!-- Ergane's SM agent reads it to produce individual story spec files. -->
 <!-- Stories MUST follow the "### Story X.Y: Title" format — the loop parses this exactly. -->
 <!-- Each story should: -->
 <!--   - Be small and independently demonstrable. -->

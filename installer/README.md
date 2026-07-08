@@ -1,16 +1,16 @@
-# Ralph Loop Installer
+# Ergane Installer
 
-The guided wizard to install and manage the Ralph Loop—an agentic workflow orchestrator for Claude Code.
+The guided wizard to install and manage Ergane—an agentic workflow orchestrator for Claude Code, built on the Ralph loop pattern.
 
 ## Quick Start
 
 ```bash
-npx @seevali/ralph-loop install
+npx @seevali/ergane install
 ```
 
 ## What it does
 
-- Scaffolds a Ralph Loop into an empty directory or existing project
+- Scaffolds Ergane into an empty directory or existing project
 - Installs [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) agent modules (`core`, `bmm`)
 - Configures project conventions and environment
 - Ships both loop entry points — the epic-file workflow and the GitHub-issue workflow (`--issue`/`--write`/`--issues`) with the `ralph-watch` swarm dashboard
@@ -25,7 +25,7 @@ npx @seevali/ralph-loop install
 
 ## Documentation
 
-Full documentation is in the [main README](https://github.com/seevali/ralph-loop-demo#readme).
+Full documentation is in the [main README](https://github.com/seevali/ergane#readme).
 
 ## License
 

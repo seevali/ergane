@@ -23,7 +23,7 @@ export function isUserEditableInstalledFile(relPath) {
 }
 
 /**
- * Validate an existing Ralph Loop installation.
+ * Validate an existing Ergane installation.
  * Checks:
  *   1. All manifest-required files exist
  *   2. File checksums match manifest
@@ -70,7 +70,7 @@ export async function runDoctor(targetPath, opts = {}) {
         check: 'manifest-exists',
         status: 'fail',
         message:
-          'no Ralph Loop installation found here (looked for .ralph/manifest.json)',
+          'no Ergane installation found here (looked for .ralph/manifest.json)',
       });
     }
     // Continue validation with other checks (don't bail)

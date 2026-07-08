@@ -1,4 +1,4 @@
-> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ralph-loop-demo/blob/main/system/design/issue-native-bmad-loop.md)** · design §7. The design doc is the source of truth.
+> **Component of [The Issue-Native BMAD Loop](https://github.com/seevali/ergane/blob/main/system/design/issue-native-bmad-loop.md)** · design §7. The design doc is the source of truth.
 
 ## Context (cold-start)
 

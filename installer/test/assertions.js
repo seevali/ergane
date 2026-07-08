@@ -1,5 +1,5 @@
 /**
- * Domain-specific assertions for the Ralph Loop installer E2E test suite.
+ * Domain-specific assertions for the Ergane installer E2E test suite.
  *
  * Each function throws a descriptive Error on failure, compatible with
  * node:assert/strict-style testing. On success, functions return undefined.

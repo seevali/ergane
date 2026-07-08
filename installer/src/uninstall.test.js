@@ -204,18 +204,18 @@ test('removeEmptyDir: returns not-empty when directory has contents', async () =
 
 // ── cleanGitignore ────────────────────────────────────────────────────────────
 
-test('cleanGitignore: removes Ralph Loop section and preserves original entries', async () => {
+test('cleanGitignore: removes Ergane section and preserves original entries', async () => {
   const dir = await makeTempDir();
   try {
     const gitignorePath = path.join(dir, '.gitignore');
-    const content = 'node_modules/\nbuild/\n\n# Ralph Loop\n_bmad/\n.claude/skills/\n';
+    const content = 'node_modules/\nbuild/\n\n# Ergane\n_bmad/\n.claude/skills/\n';
     await fs.writeFile(gitignorePath, content, 'utf8');
 
     await cleanGitignore(gitignorePath);
 
     const after = await fs.readFile(gitignorePath, 'utf8');
-    assert.ok(!after.includes('# Ralph Loop'), 'Ralph Loop section should be removed');
-    assert.ok(!after.includes('_bmad/'), 'Ralph Loop entries should be removed');
+    assert.ok(!after.includes('# Ergane'), 'Ergane section should be removed');
+    assert.ok(!after.includes('_bmad/'), 'Ergane entries should be removed');
     assert.ok(after.includes('node_modules/'), 'original entries should be preserved');
     assert.ok(after.includes('build/'), 'original entries should be preserved');
   } finally {
@@ -223,11 +223,11 @@ test('cleanGitignore: removes Ralph Loop section and preserves original entries'
   }
 });
 
-test('cleanGitignore: deletes file when it contains only Ralph Loop entries', async () => {
+test('cleanGitignore: deletes file when it contains only Ergane entries', async () => {
   const dir = await makeTempDir();
   try {
     const gitignorePath = path.join(dir, '.gitignore');
-    await fs.writeFile(gitignorePath, '\n# Ralph Loop\n_bmad/\n.claude/skills/\n', 'utf8');
+    await fs.writeFile(gitignorePath, '\n# Ergane\n_bmad/\n.claude/skills/\n', 'utf8');
 
     await cleanGitignore(gitignorePath);
 
@@ -278,7 +278,7 @@ test('uninstall: returns failure when no manifest exists', async () => {
   try {
     const result = await uninstall({ targetDir: dir }, { isTTY: false });
     assert.equal(result.success, false);
-    assert.ok(result.message.includes('no Ralph Loop installation found'), result.message);
+    assert.ok(result.message.includes('no Ergane installation found'), result.message);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
@@ -424,15 +424,15 @@ test('uninstall: removes .ralph/ directory when empty after manifest removal', a
 
 // ── uninstall — AC6: .gitignore cleanup ──────────────────────────────────────
 
-test('uninstall: removes Ralph Loop section from .gitignore and preserves original entries', async () => {
+test('uninstall: removes Ergane section from .gitignore and preserves original entries', async () => {
   const dir = await makeTempDir();
   try {
     const originalContent = 'node_modules/\nbuild/\nmy-custom-entry\n';
-    const withRalphSection = originalContent + '\n# Ralph Loop\n_bmad/\n.claude/skills/\n';
+    const withErganeSection = originalContent + '\n# Ergane\n_bmad/\n.claude/skills/\n';
 
     await createFixtureWithManifest(dir, {
       'scripts/ralph-loop.sh': { ownership: 'installer-owned' },
-      '.gitignore': { ownership: 'installer-owned', content: withRalphSection },
+      '.gitignore': { ownership: 'installer-owned', content: withErganeSection },
     });
 
     await uninstall(
@@ -441,8 +441,8 @@ test('uninstall: removes Ralph Loop section from .gitignore and preserves origin
     );
 
     const after = await fs.readFile(path.join(dir, '.gitignore'), 'utf8');
-    assert.ok(!after.includes('# Ralph Loop'), 'Ralph Loop section removed');
-    assert.ok(!after.includes('_bmad/'), 'Ralph Loop entries removed');
+    assert.ok(!after.includes('# Ergane'), 'Ergane section removed');
+    assert.ok(!after.includes('_bmad/'), 'Ergane entries removed');
     assert.ok(after.includes('node_modules/'), 'original entry preserved');
     assert.ok(after.includes('my-custom-entry'), 'original entry preserved');
   } finally {
@@ -450,14 +450,14 @@ test('uninstall: removes Ralph Loop section from .gitignore and preserves origin
   }
 });
 
-test('uninstall: deletes .gitignore when it contained only Ralph Loop entries', async () => {
+test('uninstall: deletes .gitignore when it contained only Ergane entries', async () => {
   const dir = await makeTempDir();
   try {
-    const onlyRalph = '\n# Ralph Loop\n_bmad/\n.claude/skills/\n';
+    const onlyErgane = '\n# Ergane\n_bmad/\n.claude/skills/\n';
 
     await createFixtureWithManifest(dir, {
       'scripts/ralph-loop.sh': { ownership: 'installer-owned' },
-      '.gitignore': { ownership: 'installer-owned', content: onlyRalph },
+      '.gitignore': { ownership: 'installer-owned', content: onlyErgane },
     });
 
     await uninstall(

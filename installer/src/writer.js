@@ -156,7 +156,7 @@ async function buildGitignoreContent(targetPath, entries) {
   if (toAdd.length === 0) return null;
 
   const separator = existing && !existing.endsWith('\n') ? '\n' : '';
-  const header = '\n# Ralph Loop\n';
+  const header = '\n# Ergane\n';
   return existing + separator + header + toAdd.join('\n') + '\n';
 }
 
@@ -265,7 +265,7 @@ export async function detectConflicts(plan, writeMap) {
     const fullPath = path.join(targetPath, filePath);
 
     // .gitignore is never a blocking conflict: buildGitignoreContent() already
-    // produced an append-merge of the user's existing file + a deduped "# Ralph Loop"
+    // produced an append-merge of the user's existing file + a deduped "# Ergane"
     // section, so writing it preserves everything. A pre-existing .gitignore (which
     // every real project has) must NOT hard-fail install or demand --force.
     if (filePath === '.gitignore') continue;

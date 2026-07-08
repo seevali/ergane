@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 /**
- * The single shared manifest loader for every Ralph Loop subcommand
+ * The single shared manifest loader for every Ergane subcommand
  * (install / update / uninstall / doctor). One loader, one honest error, so a
  * corrupted or missing `.ralph/manifest.json` is reported identically everywhere.
  */
@@ -10,7 +10,7 @@ import path from 'node:path';
 export const MANIFEST_REL_PATH = '.ralph/manifest.json';
 
 export const MANIFEST_NOT_FOUND_MESSAGE =
-  'no Ralph Loop installation found here (looked for .ralph/manifest.json)';
+  'no Ergane installation found here (looked for .ralph/manifest.json)';
 
 export const MANIFEST_CORRUPTED_MESSAGE =
   'manifest is corrupted — re-run install to repair; your project files are untouched';
@@ -85,7 +85,7 @@ export async function tryLoadManifest(targetDir) {
 }
 
 /**
- * File paths that signal a Ralph Loop install even without a manifest — used to
+ * File paths that signal an Ergane install even without a manifest — used to
  * detect the "orphaned install" state (loop files present, manifest missing),
  * which is what an interrupted install leaves behind.
  */
